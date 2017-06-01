@@ -1,5 +1,5 @@
 // shapes/fur.cpp*
-#include "shapes/fur.h"
+#include "shapes/furde.h"
 #include "paramset.h"
 #include "stats.h"
 

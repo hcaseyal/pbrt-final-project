@@ -68,6 +68,7 @@
 #include "lights/projection.h"
 #include "lights/spot.h"
 #include "materials/fourier.h"
+#include "materials/fur.h"
 #include "materials/glass.h"
 #include "materials/hair.h"
 #include "materials/kdsubsurface.h"
@@ -90,6 +91,7 @@
 #include "shapes/curve.h"
 #include "shapes/cylinder.h"
 #include "shapes/disk.h"
+#include "shapes/furde.h"
 #include "shapes/heightfield.h"
 #include "shapes/hyperboloid.h"
 #include "shapes/loopsubdiv.h"
@@ -300,31 +302,34 @@ std::vector<std::shared_ptr<Shape>> MakeShapes(const std::string &name,
                                                const ParamSet &paramSet) {
     std::vector<std::shared_ptr<Shape>> shapes;
     std::shared_ptr<Shape> s;
-    if (name == "sphere")
-        s = CreateSphereShape(object2world, world2object, reverseOrientation,
-                              paramSet);
-    // Create remaining single _Shape_ types
-    else if (name == "cylinder")
-        s = CreateCylinderShape(object2world, world2object, reverseOrientation,
-                                paramSet);
-    else if (name == "disk")
-        s = CreateDiskShape(object2world, world2object, reverseOrientation,
-                            paramSet);
-    else if (name == "cone")
-        s = CreateConeShape(object2world, world2object, reverseOrientation,
-                            paramSet);
-    else if (name == "paraboloid")
-        s = CreateParaboloidShape(object2world, world2object,
-                                  reverseOrientation, paramSet);
-    else if (name == "hyperboloid")
-        s = CreateHyperboloidShape(object2world, world2object,
-                                   reverseOrientation, paramSet);
+	if (name == "sphere")
+		s = CreateSphereShape(object2world, world2object, reverseOrientation,
+			paramSet);
+	// Create remaining single _Shape_ types
+	else if (name == "cylinder")
+		s = CreateCylinderShape(object2world, world2object, reverseOrientation,
+			paramSet);
+	else if (name == "disk")
+		s = CreateDiskShape(object2world, world2object, reverseOrientation,
+			paramSet);
+	else if (name == "cone")
+		s = CreateConeShape(object2world, world2object, reverseOrientation,
+			paramSet);
+	else if (name == "paraboloid")
+		s = CreateParaboloidShape(object2world, world2object,
+			reverseOrientation, paramSet);
+	else if (name == "hyperboloid")
+		s = CreateHyperboloidShape(object2world, world2object,
+			reverseOrientation, paramSet);
     if (s != nullptr) shapes.push_back(s);
 
     // Create multiple-_Shape_ types
     else if (name == "curve")
         shapes = CreateCurveShape(object2world, world2object,
                                   reverseOrientation, paramSet);
+	else if (name == "furde")
+		shapes = CreateFurShape(object2world, world2object,
+			reverseOrientation, paramSet);
     else if (name == "trianglemesh") {
         if (PbrtOptions.toPly) {
             static int count = 1;
@@ -409,20 +414,22 @@ STAT_COUNTER("Scene/Materials created", nMaterialsCreated);
 std::shared_ptr<Material> MakeMaterial(const std::string &name,
                                        const TextureParams &mp) {
     Material *material = nullptr;
-    if (name == "" || name == "none")
-        return nullptr;
-    else if (name == "matte")
-        material = CreateMatteMaterial(mp);
-    else if (name == "plastic")
-        material = CreatePlasticMaterial(mp);
-    else if (name == "translucent")
-        material = CreateTranslucentMaterial(mp);
-    else if (name == "glass")
-        material = CreateGlassMaterial(mp);
-    else if (name == "mirror")
-        material = CreateMirrorMaterial(mp);
-    else if (name == "hair")
-        material = CreateHairMaterial(mp);
+	if (name == "" || name == "none")
+		return nullptr;
+	else if (name == "matte")
+		material = CreateMatteMaterial(mp);
+	else if (name == "plastic")
+		material = CreatePlasticMaterial(mp);
+	else if (name == "translucent")
+		material = CreateTranslucentMaterial(mp);
+	else if (name == "glass")
+		material = CreateGlassMaterial(mp);
+	else if (name == "mirror")
+		material = CreateMirrorMaterial(mp);
+	else if (name == "hair")
+		material = CreateHairMaterial(mp);
+	else if (name == "fur")
+		material = CreateFurMaterial(mp);
     else if (name == "mix") {
         std::string m1 = mp.FindString("namedmaterial1", "");
         std::string m2 = mp.FindString("namedmaterial2", "");

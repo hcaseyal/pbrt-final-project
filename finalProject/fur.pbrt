@@ -30,10 +30,10 @@ LightSource "spot" "color I" [50 50 50] "point from" [0 4 3.0] "point to" [0 0 0
 #"float betaN" [17.63] "float sigmaCA" [0.39] "float sigmaMS" [3.15] "float sigmaMA" [0.21] 
 #"float g" [0.79] "float l" [0.68]
 
-Material "uber" "color Kd" [1 1 1] "color Ks" [.05 .05 .05]
+Material "fur"  "float eumelanin" 0.3 
 
 AttributeBegin
-Shape "fur" "point P" [0 0 0  0 1 0  1 0 0  1 1 0  ] "string type" "cylinder" "float width" 0.2
+Shape "furde" "point P" [0 0 0  0 1 0  1 0 0  1 1 0  ] "string type" "cylinder" "float width" 0.2
 
 AttributeEnd
 
