@@ -1,0 +1,42 @@
+#
+# The following lines define the size of the output image and the name of
+# of the file containing the result of rendering
+#
+Film "image" "string filename" ["fur.exr"]
+	"integer xresolution" [300] "integer yresolution" [300]
+
+#
+# Sampling specification: PBRT will shoot 4 samples rays per pixel.
+# Increasing the number of samples per pixel will increase image quality
+# at the cost of increased rendering time.  Feel free to crank this value
+# up in your final images.
+#
+Sampler "halton" "integer pixelsamples" [4] 
+
+Integrator "path" "integer maxdepth" [2]
+
+# Camera configuration: the camera is located on the Z axis, and is
+# pointed at the center of the scene
+LookAt 0 0 2.5  0 0 0   0 1 0
+Camera "perspective" "float fov" [60]
+
+WorldBegin
+
+LightSource "spot" "color I" [50 50 50] "point from" [0 4 3.0] "point to" [0 0 0] "float coneangle" [60]
+
+# The following sections define scene geometry and the material properties
+# TODO: make a fur material with the following "red fox" parameters
+#"float k" [0.86] "float n" [1.49] "float alpha" [2.64] "float betaM" [9.45] 
+#"float betaN" [17.63] "float sigmaCA" [0.39] "float sigmaMS" [3.15] "float sigmaMA" [0.21] 
+#"float g" [0.79] "float l" [0.68]
+
+Material "uber" "color Kd" [1 1 1] "color Ks" [.05 .05 .05]
+
+AttributeBegin
+Shape "fur" "point P" [0 0 0  0 1 0  1 0 0  1 1 0  ] "string type" "cylinder" "float width" 0.2
+
+AttributeEnd
+
+WorldEnd
+
+
