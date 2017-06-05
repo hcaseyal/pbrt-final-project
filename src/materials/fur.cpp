@@ -1,4 +1,4 @@
-// materials/fur.cpp*
+﻿// materials/fur.cpp*
 #include <array>
 #include <numeric>
 #include "interaction.h"
@@ -14,18 +14,17 @@ namespace pbrt {
 
 // fur Local Declarations
 inline Float I0(Float x), LogI0(Float x);
+inline Float Theta(int p, Float thetaI, const Float alphas[]);
+inline Float TrimmedLogistic(Float x, Float s, Float a, Float b);
 
 // fur Local Functions
-static Float Mp(Float cosThetaI, Float cosThetaO, Float sinThetaI,
-                Float sinThetaO, Float v) {
-    Float a = cosThetaI * cosThetaO / v;
-    Float b = sinThetaI * sinThetaO / v;
-    Float mp =
-        (v <= .1)
-            ? (std::exp(LogI0(a) - b - 1 / v + 0.6931f + std::log(1 / (2 * v))))
-            : (std::exp(-b) * I0(a)) / (std::sinh(1 / v) * 2 * v);
-    CHECK(!std::isinf(mp) && !std::isnan(mp));
-    return mp;
+// Mp(θi, θr) = G(θr; −θi + αp, βp),
+static Float Mp(Float thetaI, Float thetaR, const Float alphas[], int p, Float stdev) {
+	Float dtheta = thetaR - Theta(p, thetaI, alphas);
+	// Remap _dtheta_ to $[-\pi,\pi]$
+	while (dtheta > Pi) dtheta -= 2 * Pi;
+	while (dtheta < -Pi) dtheta += 2 * Pi;
+	return TrimmedLogistic(dtheta, stdev, -Pi, Pi);
 }
 
 inline Float I0(Float x) {
@@ -68,6 +67,10 @@ static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
     // Compute attenuation term accounting for remaining orders of scattering
     ap[pMaxFur] = ap[pMaxFur - 1] * f * T / (Spectrum(1.f) - T * f);
     return ap;
+}
+
+inline Float Theta(int p, Float thetaI, const Float alphas[]) {
+	return -thetaI + alphas[p];
 }
 
 inline Float Phi(int p, Float gammaO, Float gammaT) {
@@ -204,40 +207,44 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float beta_m,
     CHECK(h >= -1 && h <= 1);
     CHECK(beta_m >= 0 && beta_m <= 1);
     CHECK(beta_n >= 0 && beta_n <= 1);
-    // Compute longitudinal variance from $\beta_m$
-    static_assert(
-        pMaxFur >= 3,
-        "Longitudinal variance code must be updated to handle low pMaxFur");
-    v[0] = Sqr(0.726f * beta_m + 0.812f * Sqr(beta_m) + 3.7f * Pow<20>(beta_m));
-    v[1] = .25 * v[0];
-    v[2] = 4 * v[0];
-    for (int p = 3; p <= pMaxFur; ++p)
-        // TODO: is there anything better here?
-        v[p] = v[2];
+
+    stdev_longitudinal[0] = beta_m;
+    stdev_longitudinal[1] = beta_m / 2;
+    stdev_longitudinal[2] = 3 * beta_m / 2;
+
+	// TRRT
+	stdev_longitudinal[3] = 5 * beta_m / 2;
 
     // Compute azimuthal logistic scale factor from $\beta_n$
     s = SqrtPiOver8Fur *
         (0.265f * beta_n + 1.194f * Sqr(beta_n) + 5.372f * Pow<22>(beta_n));
     CHECK(!std::isnan(s));
 
+	// alphas for each lobe
+	alphas[0] = alpha;
+	alphas[1] = -alpha / 2;
+	alphas[2] = -3 * alpha / 2;
+
     // Compute $\alpha$ terms for Fur scales
     sin2kAlpha[0] = std::sin(Radians(alpha));
     cos2kAlpha[0] = SafeSqrt(1 - Sqr(sin2kAlpha[0]));
-    for (int i = 1; i < 3; ++i) {
-        sin2kAlpha[i] = 2 * cos2kAlpha[i - 1] * sin2kAlpha[i - 1];
-        cos2kAlpha[i] = Sqr(cos2kAlpha[i - 1]) - Sqr(sin2kAlpha[i - 1]);
-    }
+	for (int i = 1; i < 3; ++i) {
+		sin2kAlpha[i] = 2 * cos2kAlpha[i - 1] * sin2kAlpha[i - 1];
+		cos2kAlpha[i] = Sqr(cos2kAlpha[i - 1]) - Sqr(sin2kAlpha[i - 1]);
+	}
 }
 
 Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
     // Compute Fur coordinate system terms related to _wo_
     Float sinThetaO = wo.x;
     Float cosThetaO = SafeSqrt(1 - Sqr(sinThetaO));
+	Float thetaO = std::asinf(sinThetaO);
     Float phiO = std::atan2(wo.z, wo.y);
 
     // Compute Fur coordinate system terms related to _wi_
     Float sinThetaI = wi.x;
     Float cosThetaI = SafeSqrt(1 - Sqr(sinThetaI));
+	Float thetaI = std::asinf(sinThetaI);
     Float phiI = std::atan2(wi.z, wi.y);
 
     // Compute $\cos \thetat$ for refracted ray
@@ -279,13 +286,15 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 
         // Handle out-of-range $\cos \thetai$ from scale adjustment
         cosThetaIp = std::abs(cosThetaIp);
-        fsum += Mp(cosThetaIp, cosThetaO, sinThetaIp, sinThetaO, v[p]) * ap[p] *
+
+		// Compute reflected angle
+		// TODO: compute reflected angle
+        fsum += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) * ap[p] *
                 Np(phi, p, s, gammaO, gammaT);
     }
-
-    // Compute contribution of remaining terms after _pMaxFur_
-    fsum += Mp(cosThetaI, cosThetaO, sinThetaI, sinThetaO, v[pMaxFur]) * ap[pMaxFur] /
-            (2.f * Pi);
+	// Compute contribution of remaining terms
+	fsum += Mp(thetaI, thetaO, alphas, pMax, stdev_longitudinal[pMax]) * ap[pMax] /
+		(2.f * Pi);
     if (AbsCosTheta(wi) > 0) fsum /= AbsCosTheta(wi);
     CHECK(!std::isinf(fsum.y()) && !std::isnan(fsum.y()));
     return fsum;
@@ -323,6 +332,7 @@ Spectrum FurBSDF::Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u2,
     // Compute Fur coordinate system terms related to _wo_
     Float sinThetaO = wo.x;
     Float cosThetaO = SafeSqrt(1 - Sqr(sinThetaO));
+	Float thetaO = std::asinf(sinThetaO);
     Float phiO = std::atan2(wo.z, wo.y);
 
     // Derive four random samples from _u2_
@@ -339,10 +349,11 @@ Spectrum FurBSDF::Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u2,
     // Sample $M_p$ to compute $\thetai$
     u[1][0] = std::max(u[1][0], Float(1e-5));
     Float cosTheta =
-        1 + v[p] * std::log(u[1][0] + (1 - u[1][0]) * std::exp(-2 / v[p]));
+        1 + stdev_longitudinal[p] * std::log(u[1][0] + (1 - u[1][0]) * std::exp(-2 / stdev_longitudinal[p]));
     Float sinTheta = SafeSqrt(1 - Sqr(cosTheta));
     Float cosPhi = std::cos(2 * Pi * u[1][1]);
     Float sinThetaI = -cosTheta * sinThetaO + sinTheta * cosPhi * cosThetaO;
+	Float thetaI = std::asinf(sinThetaI);
     Float cosThetaI = SafeSqrt(1 - Sqr(sinThetaI));
 
     // Update sampled $\sin \thetai$ and $\cos \thetai$ to account for scales
@@ -403,10 +414,10 @@ Spectrum FurBSDF::Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u2,
 
         // Handle out-of-range $\cos \thetai$ from scale adjustment
         cosThetaIp = std::abs(cosThetaIp);
-        *pdf += Mp(cosThetaIp, cosThetaO, sinThetaIp, sinThetaO, v[p]) *
-                apPdf[p] * Np(dphi, p, s, gammaO, gammaT);
+		*pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) * apPdf[p] *
+			Np(dphi, p, s, gammaO, gammaT);
     }
-    *pdf += Mp(cosThetaI, cosThetaO, sinThetaI, sinThetaO, v[pMaxFur]) *
+    *pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) *
             apPdf[pMaxFur] * (1 / (2 * Pi));
     // if (std::abs(wi->x) < .9999) CHECK_NEAR(*pdf, Pdf(wo, *wi), .01);
     return f(wo, *wi);
@@ -416,11 +427,13 @@ Float FurBSDF::Pdf(const Vector3f &wo, const Vector3f &wi) const {
     // Compute Fur coordinate system terms related to _wo_
     Float sinThetaO = wo.x;
     Float cosThetaO = SafeSqrt(1 - Sqr(sinThetaO));
+	Float thetaO = std::asinf(sinThetaO);
     Float phiO = std::atan2(wo.z, wo.y);
 
     // Compute Fur coordinate system terms related to _wi_
     Float sinThetaI = wi.x;
     Float cosThetaI = SafeSqrt(1 - Sqr(sinThetaI));
+	Float thetaI = std::asinf(sinThetaI);
     Float phiI = std::atan2(wi.z, wi.y);
 
     // Compute $\cos \thetat$ for refracted ray
@@ -461,10 +474,10 @@ Float FurBSDF::Pdf(const Vector3f &wo, const Vector3f &wi) const {
 
         // Handle out-of-range $\cos \thetai$ from scale adjustment
         cosThetaIp = std::abs(cosThetaIp);
-        pdf += Mp(cosThetaIp, cosThetaO, sinThetaIp, sinThetaO, v[p]) *
+        pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) *
                apPdf[p] * Np(phi, p, s, gammaO, gammaT);
     }
-    pdf += Mp(cosThetaI, cosThetaO, sinThetaI, sinThetaO, v[pMaxFur]) *
+    pdf += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) *
            apPdf[pMaxFur] * (1 / (2 * Pi));
     return pdf;
 }
@@ -473,7 +486,7 @@ std::string FurBSDF::ToString() const {
     return StringPrintf(
         "[ Fur h: %f gammaO: %f eta: %f beta_m: %f beta_n: %f "
         "v[0]: %f s: %f sigma_a: ", h, gammaO, eta, beta_m, beta_n,
-        v[0], s) +
+        stdev_longitudinal[0], s) +
         sigma_a.ToString() +
         std::string("  ]");
 }
