@@ -26,7 +26,11 @@ class FurMaterial : public Material {
                  const std::shared_ptr<Texture<Float>> &eta,
                  const std::shared_ptr<Texture<Float>> &beta_m,
                  const std::shared_ptr<Texture<Float>> &beta_n,
-                 const std::shared_ptr<Texture<Float>> &alpha)
+                 const std::shared_ptr<Texture<Float>> &alpha,
+				 const std::shared_ptr<Texture<Float>> &sigma_c_a,
+			     const std::shared_ptr<Texture<Float>> &sigma_m_a,
+				 const std::shared_ptr<Texture<Float>> &sigma_m_s,
+				 const std::shared_ptr<Texture<Float>> &k)
         : sigma_a(sigma_a),
           color(color),
           eumelanin(eumelanin),
@@ -34,7 +38,11 @@ class FurMaterial : public Material {
           eta(eta),
           beta_m(beta_m),
           beta_n(beta_n),
-          alpha(alpha) {}
+          alpha(alpha), 
+		  sigma_c_a(sigma_c_a),
+		  sigma_m_a(sigma_m_a),
+		  sigma_m_s(sigma_m_s),
+		  k(k) {}
     void ComputeScatteringFunctions(SurfaceInteraction *si, MemoryArena &arena,
                                     TransportMode mode,
                                     bool allowMultipleLobes) const;
@@ -44,6 +52,7 @@ class FurMaterial : public Material {
     std::shared_ptr<Texture<Spectrum>> sigma_a, color;
     std::shared_ptr<Texture<Float>> eumelanin, pheomelanin, eta;
     std::shared_ptr<Texture<Float>> beta_m, beta_n, alpha;
+	std::shared_ptr<Texture<Float>> sigma_c_a, sigma_m_a, sigma_m_s, k;
 };
 
 FurMaterial *CreateFurMaterial(const TextureParams &mp);
@@ -79,6 +88,10 @@ class FurBSDF : public BxDF {
     Float s;
     Float sin2kAlpha[3], cos2kAlpha[3];
 	Float alphas[3];
+	Float sigma_c_a;
+	Float sigma_m_a;
+	Float sigma_m_s;
+	Float k; // medullary index (rel. radius length)
 };
 
 }  // namespace pbrt

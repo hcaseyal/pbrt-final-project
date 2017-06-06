@@ -188,10 +188,14 @@ FurMaterial *CreateFurMaterial(const TextureParams &mp) {
     std::shared_ptr<Texture<Float>> eta = mp.GetFloatTexture("eta", 1.55f);
     std::shared_ptr<Texture<Float>> beta_m = mp.GetFloatTexture("beta_m", 0.3f);
     std::shared_ptr<Texture<Float>> beta_n = mp.GetFloatTexture("beta_n", 0.3f);
-    std::shared_ptr<Texture<Float>> alpha = mp.GetFloatTexture("alpha", 2.f);
+    std::shared_ptr<Texture<Float>> alpha = mp.GetFloatTexture("alpha", 2.64f);
+	std::shared_ptr<Texture<Float>> sigma_c_a = mp.GetFloatTexture("sigma_c_a", 0.39f);
+	std::shared_ptr<Texture<Float>> sigma_m_a = mp.GetFloatTexture("sigma_m_a", 2.0f);
+	std::shared_ptr<Texture<Float>> sigma_m_s = mp.GetFloatTexture("sigma_m_s", 3.15f);
+	std::shared_ptr<Texture<Float>> k = mp.GetFloatTexture("k", 2.f);
 
     return new FurMaterial(sigma_a, color, eumelanin, pheomelanin, eta, beta_m,
-                            beta_n, alpha);
+                            beta_n, alpha, sigma_c_a, sigma_m_a, sigma_m_s, k);
 }
 
 // FurBSDF Method Definitions
@@ -261,7 +265,12 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
     Float gammaT = SafeASin(sinGammaT);
 
     // Compute the transmittance _T_ of a single path through the cylinder
-    Spectrum T = Exp(-sigma_a * (2 * cosGammaT / cosThetaT));
+	Float s_m = sqrt(pow(k, 2) - pow(sinGammaT, 2)) ;
+	Float s_c = cosGammaT - s_m;
+	Float numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
+	Float thetaD = (thetaO - thetaI) / 2;
+	Float denom = cosf(thetaD);
+	Spectrum T = exp(numerator / denom);
 
     // Evaluate Fur BSDF
     Float phi = phiI - phiO;
