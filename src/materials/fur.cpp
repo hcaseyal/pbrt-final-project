@@ -91,12 +91,12 @@ inline Float TrimmedLogistic(Float x, Float s, Float a, Float b) {
     return Logistic(x, s) / (LogisticCDF(b, s) - LogisticCDF(a, s));
 }
 
-inline Float Np(Float phi, int p, Float s, Float gammaO, Float gammaT) {
+inline Float Np(Float phi, int p, Float stdev, Float gammaO, Float gammaT) {
     Float dphi = phi - Phi(p, gammaO, gammaT);
     // Remap _dphi_ to $[-\pi,\pi]$
     while (dphi > Pi) dphi -= 2 * Pi;
     while (dphi < -Pi) dphi += 2 * Pi;
-    return TrimmedLogistic(dphi, s, -Pi, Pi);
+    return TrimmedLogistic(dphi, stdev, -Pi, Pi);
 }
 
 static Float SampleTrimmedLogistic(Float u, Float s, Float a, Float b) {
@@ -205,14 +205,17 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float beta_m,
       beta_m(beta_m),
       beta_n(beta_n) {
     CHECK(h >= -1 && h <= 1);
-    CHECK(beta_m >= 0 && beta_m <= 1);
-    CHECK(beta_n >= 0 && beta_n <= 1);
+
+	stdev_azimuthal[0] = beta_n;
+	stdev_azimuthal[1] = sqrt(2) * beta_n;
+	stdev_azimuthal[2] = sqrt(3) * beta_n;
 
     stdev_longitudinal[0] = beta_m;
     stdev_longitudinal[1] = beta_m / 2;
     stdev_longitudinal[2] = 3 * beta_m / 2;
 
 	// TRRT
+	stdev_azimuthal[3] = 2 * beta_n;
 	stdev_longitudinal[3] = 5 * beta_m / 2;
 
     // Compute azimuthal logistic scale factor from $\beta_n$
@@ -290,7 +293,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 		// Compute reflected angle
 		// TODO: compute reflected angle
         fsum += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) * ap[p] *
-                Np(phi, p, s, gammaO, gammaT);
+                Np(phi, p, stdev_azimuthal[p], gammaO, gammaT);
     }
 	// Compute contribution of remaining terms
 	fsum += Mp(thetaI, thetaO, alphas, pMax, stdev_longitudinal[pMax]) * ap[pMax] /

@@ -75,6 +75,7 @@ class FurBSDF : public BxDF {
     const Spectrum sigma_a;
     const Float beta_m, beta_n;
     Float stdev_longitudinal[pMaxFur + 1];
+	Float stdev_azimuthal[pMax + 1];
     Float s;
     Float sin2kAlpha[3], cos2kAlpha[3];
 	Float alphas[3];
