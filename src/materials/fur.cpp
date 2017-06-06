@@ -132,13 +132,15 @@ void FurMaterial::ComputeScatteringFunctions(SurfaceInteraction *si,
             std::max(Float(0), eumelanin ? eumelanin->Evaluate(*si) : 0),
             std::max(Float(0), pheomelanin ? pheomelanin->Evaluate(*si) : 0));
     }
+	Float sigma_c_a_ = sigma_c_a->Evaluate(*si);
+	Float sigma_m_a_ = sigma_m_a->Evaluate(*si);
+	Float sigma_m_s_ = sigma_m_s->Evaluate(*si);
 
     // Offset along width
     Float h = -1 + 2 * si->uv[1];
 	Float k_ = k->Evaluate(*si);
 	Float cuticle_layers_ = cuticle_layers->Evaluate(*si);
-
-    si->bsdf->Add(ARENA_ALLOC(arena, FurBSDF)(h, e, sig_a, bm, bn, a, k_, cuticle_layers_));
+    si->bsdf->Add(ARENA_ALLOC(arena, FurBSDF)(h, e, sig_a, sigma_c_a_, sigma_m_a_, sigma_m_s_, bm, bn, a, k_, cuticle_layers_));
 }
 
 FurMaterial *CreateFurMaterial(const TextureParams &mp) {
@@ -203,13 +205,16 @@ FurMaterial *CreateFurMaterial(const TextureParams &mp) {
 }
 
 // FurBSDF Method Definitions
-FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float beta_m,
-                   Float beta_n, Float alpha, Float k, Float cuticle_layers)
+FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float sigma_c_a, Float sigma_m_a, Float sigma_m_s,
+	Float beta_m, Float beta_n, Float alpha, Float k, Float cuticle_layers)
     : BxDF(BxDFType(BSDF_GLOSSY | BSDF_REFLECTION | BSDF_TRANSMISSION)),
       h(h),
       gammaO(SafeASin(h)),
       eta(eta),
       sigma_a(sigma_a),
+	  sigma_c_a(sigma_c_a),
+	  sigma_m_a(sigma_m_a),
+	  sigma_m_s(sigma_m_s),
       beta_m(beta_m),
       beta_n(beta_n),
 	  k(k),
