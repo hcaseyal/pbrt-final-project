@@ -113,8 +113,8 @@ void FurMaterial::ComputeScatteringFunctions(SurfaceInteraction *si,
                                               MemoryArena &arena,
                                               TransportMode mode,
                                               bool allowMultipleLobes) const {
-    Float bm = beta_m->Evaluate(*si);
-    Float bn = beta_n->Evaluate(*si);
+    Float bm = Radians(beta_m->Evaluate(*si));
+    Float bn = Radians(beta_n->Evaluate(*si));
     Float a = Radians(alpha->Evaluate(*si));
     Float e = eta->Evaluate(*si);
 
@@ -137,6 +137,7 @@ void FurMaterial::ComputeScatteringFunctions(SurfaceInteraction *si,
     Float h = -1 + 2 * si->uv[1];
 	Float k_ = k->Evaluate(*si);
 	Float cuticle_layers_ = cuticle_layers->Evaluate(*si);
+
     si->bsdf->Add(ARENA_ALLOC(arena, FurBSDF)(h, e, sig_a, bm, bn, a, k_, cuticle_layers_));
 }
 

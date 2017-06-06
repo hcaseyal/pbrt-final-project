@@ -23,16 +23,14 @@ Camera "perspective" "float fov" [60]
 WorldBegin
 
 LightSource "spot" "color I" [50 50 50] "point from" [0 4 3.0] "point to" [0 0 0] "float coneangle" [60]
+LightSource "spot" "color I" [50 50 50] "point from" [0 7 -3.0] "point to" [0 0 0] "float coneangle" [60]
 
 # The following sections define scene geometry and the material properties
-# TODO: make a fur material with the following "red fox" parameters
-#"float k" [0.86] "float eta" [1.49] "float alpha" [2.64] "float betaM" [9.45] 
-#"float betaN" [17.63] "float sigma_c_a [0.39] "float sigma_m_s" [3.15] "float sigma_m_a" [0.21] 
-#"float g" [0.79] "float l" [0.68]
 
 Material "fur" "float beta_m" 9.45 "float beta_n" 17.63 "float alpha" 2.64 "float sigma_c_a" 0.39 
 "float sigma_m_s" 3.15 "float sigma_m_a" 0.21 "float k" 0.86 "float eta" 1.49 
-"float cuticle_layers" 0.68
+"float cuticle_layers" 0.68 
+#"float g" [0.79] 
  
 AttributeBegin
 Shape "furde" "point P" [0 0 0  0 1 0  1 0 0  1 1 0  ] "string type" "cylinder" "float width" 0.2
