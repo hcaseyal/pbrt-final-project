@@ -60,7 +60,6 @@ static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
 
     // Compute $p=1$ attenuation term
     ap[1] = Sqr(1 - f) * T;
-
     // Compute attenuation terms up to $p=_pMaxFur_$
     for (int p = 2; p < pMaxFur; ++p) ap[p] = ap[p - 1] * T * f;
 
@@ -270,7 +269,13 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	Float numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
 	Float thetaD = (thetaO - thetaI) / 2;
 	Float denom = cosf(thetaD);
-	Spectrum T = exp(numerator / denom);
+	Spectrum T;
+	if (denom > 0) {
+		T = exp(numerator / denom);
+	}
+	else {
+		T = Spectrum(0.f);
+	}
 
     // Evaluate Fur BSDF
     Float phi = phiI - phiO;
@@ -301,14 +306,22 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 
 		// Compute reflected angle
 		// TODO: compute reflected angle
-        fsum += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) * ap[p] *
+        fsum += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) 
+			    * ap[p] *
                 Np(phi, p, stdev_azimuthal[p], gammaO, gammaT);
+		if (std::isnan(fsum.y())) {
+			// p : 1, etap: 1.545290, cosThetaO: 0.937595, eta: 1.490000, phiO: -1.875600, phiI: -1.837651, Mp: 0.164642, ap: 0.000000, Np: 0.158774
+			printf("p : %d, etap: %f, cosThetaO: %f, eta: %f, phiO: %f, phiI: %f, Mp: %f, ap: %f, Np: %f, T: %f \n ", p, etap, cosThetaO, eta, phiO, phiI, Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]),
+				ap[p], Np(phi, p, stdev_azimuthal[p], gammaO, gammaT), T);
+			printf("fSum.x: %f, z: %f \n ", fsum.x(), fsum.z());
+		}
     }
 	// Compute contribution of remaining terms
-	fsum += Mp(thetaI, thetaO, alphas, pMax, stdev_longitudinal[pMax]) * ap[pMax] /
+	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) * ap[pMaxFur] /
 		(2.f * Pi);
     if (AbsCosTheta(wi) > 0) fsum /= AbsCosTheta(wi);
-    CHECK(!std::isinf(fsum.y()) && !std::isnan(fsum.y()));
+	CHECK(!std::isinf(fsum.y()));
+	CHECK(!std::isnan(fsum.y()));
     return fsum;
 }
 
