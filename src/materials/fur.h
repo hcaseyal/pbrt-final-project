@@ -30,7 +30,8 @@ class FurMaterial : public Material {
 				 const std::shared_ptr<Texture<Float>> &sigma_c_a,
 			     const std::shared_ptr<Texture<Float>> &sigma_m_a,
 				 const std::shared_ptr<Texture<Float>> &sigma_m_s,
-				 const std::shared_ptr<Texture<Float>> &k)
+				 const std::shared_ptr<Texture<Float>> &k,
+				 const std::shared_ptr<Texture<Float>> &cuticle_layers)
         : sigma_a(sigma_a),
           color(color),
           eumelanin(eumelanin),
@@ -42,7 +43,8 @@ class FurMaterial : public Material {
 		  sigma_c_a(sigma_c_a),
 		  sigma_m_a(sigma_m_a),
 		  sigma_m_s(sigma_m_s),
-		  k(k) {}
+		  k(k),
+		  cuticle_layers(cuticle_layers){}
     void ComputeScatteringFunctions(SurfaceInteraction *si, MemoryArena &arena,
                                     TransportMode mode,
                                     bool allowMultipleLobes) const;
@@ -52,7 +54,7 @@ class FurMaterial : public Material {
     std::shared_ptr<Texture<Spectrum>> sigma_a, color;
     std::shared_ptr<Texture<Float>> eumelanin, pheomelanin, eta;
     std::shared_ptr<Texture<Float>> beta_m, beta_n, alpha;
-	std::shared_ptr<Texture<Float>> sigma_c_a, sigma_m_a, sigma_m_s, k;
+	std::shared_ptr<Texture<Float>> sigma_c_a, sigma_m_a, sigma_m_s, k, cuticle_layers;
 };
 
 FurMaterial *CreateFurMaterial(const TextureParams &mp);
@@ -66,7 +68,7 @@ class FurBSDF : public BxDF {
   public:
     // FurBSDF Public Methods
     FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float beta_m,
-             Float beta_n, Float alpha);
+             Float beta_n, Float alpha, Float k, Float cuticle_layers);
     Spectrum f(const Vector3f &wo, const Vector3f &wi) const;
     Spectrum Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u,
                       Float *pdf, BxDFType *sampledType) const;
@@ -92,6 +94,7 @@ class FurBSDF : public BxDF {
 	Float sigma_m_a;
 	Float sigma_m_s;
 	Float k; // medullary index (rel. radius length)
+	Float cuticle_layers;
 };
 
 }  // namespace pbrt

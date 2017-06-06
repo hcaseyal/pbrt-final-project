@@ -50,22 +50,24 @@ inline Float LogI0(Float x) {
 }
 
 static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
-                                         const Spectrum &T) {
-    std::array<Spectrum, pMaxFur + 1> ap;
-    // Compute $p=0$ attenuation at initial cylinder intersection
-    Float cosGammaO = SafeSqrt(1 - h * h);
-    Float cosTheta = cosThetaO * cosGammaO;
-    Float f = FrDielectric(cosTheta, 1.f, eta);
-    ap[0] = f;
+                                         const Spectrum &T, Float cuticle_layers) {
+	std::array<Spectrum, pMax + 1> ap;
+	// Compute $p=0$ attenuation at initial cylinder intersection
+	Float cosGammaO = SafeSqrt(1 - h * h);
+	Float cosTheta = cosThetaO * cosGammaO;
+	Float dielectric = FrDielectric(cosTheta, 1.f, eta);
+	Float f = (cuticle_layers * dielectric) / (1 + (cuticle_layers - 1) * dielectric);
+	ap[0] = f;
 
-    // Compute $p=1$ attenuation term
-    ap[1] = Sqr(1 - f) * T;
-    // Compute attenuation terms up to $p=_pMaxFur_$
-    for (int p = 2; p < pMaxFur; ++p) ap[p] = ap[p - 1] * T * f;
+	// Compute $p=1$ attenuation term
+	ap[1] = Sqr(1 - f) * T;
 
-    // Compute attenuation term accounting for remaining orders of scattering
-    ap[pMaxFur] = ap[pMaxFur - 1] * f * T / (Spectrum(1.f) - T * f);
-    return ap;
+	// Compute attenuation terms up to $p=_pMax_$
+	for (int p = 2; p < pMax; ++p) ap[p] = ap[p - 1] * T * f;
+
+	// Compute attenuation term accounting for remaining orders of scattering
+	ap[pMax] = ap[pMax - 1] * f * T / (Spectrum(1.f) - T * f);
+	return ap;
 }
 
 inline Float Theta(int p, Float thetaI, const Float alphas[]) {
@@ -133,7 +135,9 @@ void FurMaterial::ComputeScatteringFunctions(SurfaceInteraction *si,
 
     // Offset along width
     Float h = -1 + 2 * si->uv[1];
-    si->bsdf->Add(ARENA_ALLOC(arena, FurBSDF)(h, e, sig_a, bm, bn, a));
+	Float k_ = k->Evaluate(*si);
+	Float cuticle_layers_ = cuticle_layers->Evaluate(*si);
+    si->bsdf->Add(ARENA_ALLOC(arena, FurBSDF)(h, e, sig_a, bm, bn, a, k_, cuticle_layers_));
 }
 
 FurMaterial *CreateFurMaterial(const TextureParams &mp) {
@@ -186,27 +190,29 @@ FurMaterial *CreateFurMaterial(const TextureParams &mp) {
 
     std::shared_ptr<Texture<Float>> eta = mp.GetFloatTexture("eta", 1.55f);
     std::shared_ptr<Texture<Float>> beta_m = mp.GetFloatTexture("beta_m", 0.3f);
-    std::shared_ptr<Texture<Float>> beta_n = mp.GetFloatTexture("beta_n", 0.3f);
+    std::shared_ptr<Texture<Float>> beta_n = mp.GetFloatTexture("beta_n", 17.63f);
     std::shared_ptr<Texture<Float>> alpha = mp.GetFloatTexture("alpha", 2.64f);
 	std::shared_ptr<Texture<Float>> sigma_c_a = mp.GetFloatTexture("sigma_c_a", 0.39f);
-	std::shared_ptr<Texture<Float>> sigma_m_a = mp.GetFloatTexture("sigma_m_a", 2.0f);
+	std::shared_ptr<Texture<Float>> sigma_m_a = mp.GetFloatTexture("sigma_m_a", 0.21f);
 	std::shared_ptr<Texture<Float>> sigma_m_s = mp.GetFloatTexture("sigma_m_s", 3.15f);
 	std::shared_ptr<Texture<Float>> k = mp.GetFloatTexture("k", 2.f);
-
+	std::shared_ptr<Texture<Float>> cuticle_layers = mp.GetFloatTexture("cuticle_layers", 0.68f);
     return new FurMaterial(sigma_a, color, eumelanin, pheomelanin, eta, beta_m,
-                            beta_n, alpha, sigma_c_a, sigma_m_a, sigma_m_s, k);
+                            beta_n, alpha, sigma_c_a, sigma_m_a, sigma_m_s, k, cuticle_layers);
 }
 
 // FurBSDF Method Definitions
 FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float beta_m,
-                   Float beta_n, Float alpha)
+                   Float beta_n, Float alpha, Float k, Float cuticle_layers)
     : BxDF(BxDFType(BSDF_GLOSSY | BSDF_REFLECTION | BSDF_TRANSMISSION)),
       h(h),
       gammaO(SafeASin(h)),
       eta(eta),
       sigma_a(sigma_a),
       beta_m(beta_m),
-      beta_n(beta_n) {
+      beta_n(beta_n),
+	  k(k),
+	  cuticle_layers(cuticle_layers){
     CHECK(h >= -1 && h <= 1);
 
 	stdev_azimuthal[0] = beta_n;
@@ -264,7 +270,14 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
     Float gammaT = SafeASin(sinGammaT);
 
     // Compute the transmittance _T_ of a single path through the cylinder
-	Float s_m = sqrt(pow(k, 2) - pow(sinGammaT, 2)) ;
+	Float s_m;
+	Float term = pow(k, 2) - pow(sinGammaT, 2);
+	if (term < 0) {
+		s_m = 0;
+	}
+	else {
+		s_m = sqrt(term);
+	}
 	Float s_c = cosGammaT - s_m;
 	Float numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
 	Float thetaD = (thetaO - thetaI) / 2;
@@ -279,7 +292,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 
     // Evaluate Fur BSDF
     Float phi = phiI - phiO;
-    std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T);
+    std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers);
     Spectrum fsum(0.);
     for (int p = 0; p < pMaxFur; ++p) {
         // Compute $\sin \thetai$ and $\cos \thetai$ terms accounting for scales
@@ -305,16 +318,10 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
         cosThetaIp = std::abs(cosThetaIp);
 
 		// Compute reflected angle
-		// TODO: compute reflected angle
-        fsum += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) 
-			    * ap[p] *
-                Np(phi, p, stdev_azimuthal[p], gammaO, gammaT);
-		if (std::isnan(fsum.y())) {
-			// p : 1, etap: 1.545290, cosThetaO: 0.937595, eta: 1.490000, phiO: -1.875600, phiI: -1.837651, Mp: 0.164642, ap: 0.000000, Np: 0.158774
-			printf("p : %d, etap: %f, cosThetaO: %f, eta: %f, phiO: %f, phiI: %f, Mp: %f, ap: %f, Np: %f, T: %f \n ", p, etap, cosThetaO, eta, phiO, phiI, Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]),
-				ap[p], Np(phi, p, stdev_azimuthal[p], gammaO, gammaT), T);
-			printf("fSum.x: %f, z: %f \n ", fsum.x(), fsum.z());
-		}
+		Float mp = Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]);
+		Spectrum apVal = ap[p];
+        Float np = Np(phi, p, stdev_azimuthal[p], gammaO, gammaT);
+		fsum += mp * apVal * np;
     }
 	// Compute contribution of remaining terms
 	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) * ap[pMaxFur] /
@@ -341,7 +348,7 @@ std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
 
     // Compute the transmittance _T_ of a single path through the cylinder
     Spectrum T = Exp(-sigma_a * (2 * cosGammaT / cosThetaT));
-    std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T);
+    std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers);
 
     // Compute $A_p$ PDF from individual $A_p$ terms
     std::array<Float, pMaxFur + 1> apPdf;
