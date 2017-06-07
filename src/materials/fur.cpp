@@ -61,10 +61,18 @@ static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
 
 	// Compute $p=1$ attenuation term
 	ap[1] = Sqr(1 - f) * T;
-
+	//printf("The float f: %f \n", f);
+	Float rgbF[3];
+	ap[1].ToRGB(rgbF);
+	//printf("2 apval: r: %f, g: %f, b: %f \n", rgbF[0], rgbF[1], rgbF[2]);
+	//printf("2 apval: r: %f, g: %f, b: %f \n", rgbF[0], rgbF[1], rgbF[2]);
 	// Compute attenuation terms up to $p=_pMax_$
-	for (int p = 2; p < pMax; ++p) ap[p] = ap[p - 1] * T * f;
+	for (int p = 2; p < pMax; ++p) {
+		ap[p] = ap[p - 1] * T * f;
+	}
 
+	ap[2].ToRGB(rgbF);
+	//printf("3 apval: r: %f, g: %f, b: %f \n\n", rgbF[0], rgbF[1], rgbF[2]);
 	// Compute attenuation term accounting for remaining orders of scattering
 	ap[pMax] = ap[pMax - 1] * f * T / (Spectrum(1.f) - T * f);
 	return ap;
@@ -132,7 +140,8 @@ void FurMaterial::ComputeScatteringFunctions(SurfaceInteraction *si,
             std::max(Float(0), eumelanin ? eumelanin->Evaluate(*si) : 0),
             std::max(Float(0), pheomelanin ? pheomelanin->Evaluate(*si) : 0));
     }
-	Float sigma_c_a_ = sigma_c_a->Evaluate(*si);
+	Spectrum sigma_c_a_ = sigma_c_a->Evaluate(*si);
+	Float rgb[3];
 	Float sigma_m_a_ = sigma_m_a->Evaluate(*si);
 	Float sigma_m_s_ = sigma_m_s->Evaluate(*si);
 
@@ -146,6 +155,9 @@ void FurMaterial::ComputeScatteringFunctions(SurfaceInteraction *si,
 FurMaterial *CreateFurMaterial(const TextureParams &mp) {
     std::shared_ptr<Texture<Spectrum>> sigma_a =
         mp.GetSpectrumTextureOrNull("sigma_a");
+	std::shared_ptr<Texture<Spectrum>> sigma_c_a =
+		mp.GetSpectrumTextureOrNull("sigma_c_a");
+	CHECK(sigma_c_a != NULL);
     std::shared_ptr<Texture<Spectrum>> color =
         mp.GetSpectrumTextureOrNull("color");
     std::shared_ptr<Texture<Float>> eumelanin =
@@ -191,21 +203,20 @@ FurMaterial *CreateFurMaterial(const TextureParams &mp) {
             FurBSDF::SigmaAFromConcentration(1.3, 0.));
     }
 
-    std::shared_ptr<Texture<Float>> eta = mp.GetFloatTexture("eta", 1.55f);
-    std::shared_ptr<Texture<Float>> beta_m = mp.GetFloatTexture("beta_m", 0.3f);
+    std::shared_ptr<Texture<Float>> eta = mp.GetFloatTexture("eta", 1.49f);
+    std::shared_ptr<Texture<Float>> beta_m = mp.GetFloatTexture("beta_m", 9.45f);
     std::shared_ptr<Texture<Float>> beta_n = mp.GetFloatTexture("beta_n", 17.63f);
     std::shared_ptr<Texture<Float>> alpha = mp.GetFloatTexture("alpha", 2.64f);
-	std::shared_ptr<Texture<Float>> sigma_c_a = mp.GetFloatTexture("sigma_c_a", 0.39f);
 	std::shared_ptr<Texture<Float>> sigma_m_a = mp.GetFloatTexture("sigma_m_a", 0.21f);
 	std::shared_ptr<Texture<Float>> sigma_m_s = mp.GetFloatTexture("sigma_m_s", 3.15f);
-	std::shared_ptr<Texture<Float>> k = mp.GetFloatTexture("k", 2.f);
+	std::shared_ptr<Texture<Float>> k = mp.GetFloatTexture("k", 0.86f);
 	std::shared_ptr<Texture<Float>> cuticle_layers = mp.GetFloatTexture("cuticle_layers", 0.68f);
     return new FurMaterial(sigma_a, color, eumelanin, pheomelanin, eta, beta_m,
                             beta_n, alpha, sigma_c_a, sigma_m_a, sigma_m_s, k, cuticle_layers);
 }
 
 // FurBSDF Method Definitions
-FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float sigma_c_a, Float sigma_m_a, Float sigma_m_s,
+FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Spectrum sigma_c_a, Float sigma_m_a, Float sigma_m_s,
 	Float beta_m, Float beta_n, Float alpha, Float k, Float cuticle_layers)
     : BxDF(BxDFType(BSDF_GLOSSY | BSDF_REFLECTION | BSDF_TRANSMISSION)),
       h(h),
@@ -220,7 +231,6 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float sigma_c_a, F
 	  k(k),
 	  cuticle_layers(cuticle_layers){
     CHECK(h >= -1 && h <= 1);
-
 	stdev_azimuthal[0] = beta_n;
 	stdev_azimuthal[1] = sqrt(2) * beta_n;
 	stdev_azimuthal[2] = sqrt(3) * beta_n;
@@ -253,6 +263,7 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Float sigma_c_a, F
 }
 
 Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
+
     // Compute Fur coordinate system terms related to _wo_
     Float sinThetaO = wo.x;
     Float cosThetaO = SafeSqrt(1 - Sqr(sinThetaO));
@@ -285,15 +296,26 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 		s_m = sqrt(term);
 	}
 	Float s_c = cosGammaT - s_m;
-	Float numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
+
+	//TODO: remove
+	Float rgbSigma[3];
+	sigma_c_a.ToRGB(rgbSigma);
+
+
+	Spectrum numerator =  (2 * s_c * sigma_c_a + 0.2 * s_m * (sigma_m_a + sigma_m_s));
+	//printf("numerator: %f, %f, %f \n", rgb[0], rgb[1], rgb[2]);
 	Float thetaD = (thetaO - thetaI) / 2;
+	//printf("thetaD: %f \n", thetaD);
 	Float denom = cosf(thetaD);
+	//printf("denom: %f \n", denom);
 	Spectrum T;
 	if (denom > 0) {
-		T = exp(numerator / denom);
+		// TODO: why is transmittance so low?
+		T = Exp(-numerator / denom);
 	}
 	else {
 		T = Spectrum(0.f);
+		printf("Transmittance 0!\n");
 	}
 
     // Evaluate Fur BSDF
@@ -328,13 +350,33 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 		Spectrum apVal = ap[p];
         Float np = Np(phi, p, stdev_azimuthal[p], gammaO, gammaT);
 		fsum += mp * apVal * np;
+
     }
 	// Compute contribution of remaining terms
 	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) * ap[pMaxFur] /
 		(2.f * Pi);
+
+	/*
+	TODO: remove
+	Float newRgb[3];
+	newRgb[0] = 0.2;
+	newRgb[1] = 0.4;
+	newRgb[2] = 0.6;
+	fsum = fsum.FromRGB(newRgb);
+	*/
+	/*
+	fsum *= 10;
+	Float rgbF[3];
+	fsum.ToRGB(rgbF);
+	printf("After adding 0.5: r: %f, g: %f, b: %f \n", rgbF[0], rgbF[1], rgbF[2]);
+	*/
+	fsum /= Sqr(cosThetaI);
     if (AbsCosTheta(wi) > 0) fsum /= AbsCosTheta(wi);
 	CHECK(!std::isinf(fsum.y()));
 	CHECK(!std::isnan(fsum.y()));
+	//Float rgb[3];
+	//fsum.ToRGB(rgb);
+	//printf("Color: r: %f, g: %f, b: %f \n", rgb[0], rgb[1], rgb[2]);
     return fsum;
 }
 
