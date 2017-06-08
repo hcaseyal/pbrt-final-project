@@ -13,7 +13,7 @@ Film "image" "string filename" ["fur.exr"]
 #
 Sampler "halton" "integer pixelsamples" [4] 
 
-Integrator "path" "integer maxdepth" [2]
+Integrator "path" "integer maxdepth" [8]
 
 # Camera configuration: the camera is located on the Z axis, and is
 # pointed at the center of the scene
@@ -22,7 +22,7 @@ Camera "perspective" "float fov" [60]
 
 WorldBegin
 
-LightSource "spot" "color I" [50 50 50] "point from" [0 4 3.0] "point to" [0 0 0] "float coneangle" [60]
+LightSource "spot" "color I" [200 200 200] "point from" [0 4 3.0] "point to" [0 0 0] "float coneangle" [60]
 LightSource "spot" "color I" [50 50 50] "point from" [0 7 -3.0] "point to" [0 0 0] "float coneangle" [60]
 
 # The following sections define scene geometry and the material properties
@@ -34,11 +34,21 @@ Shape "trianglemesh"
 Material 
 #"hair" "float eumelanin" 0.3
 "fur"
-"float beta_m" 9.45 "float beta_n" 17.63 "float alpha" 2.64 "rgb sigma_c_a" [0.2 4 6] #[0.2 0.4 0.6] 
-"float sigma_m_s" 3.15 "float sigma_m_a" 0.21 "float k" 0.86 "float eta" 1.49 
+"float beta_m" 9.45 "float beta_n" 17.63 "float alpha" 2.64 "rgb sigma_c_a" [0.2 0.4 0.6] 
+"float sigma_m_s" 3.15 "float sigma_m_a" 0.21 
+"float k" 0.86 
+"float eta" 1.49 
 "float cuticle_layers" 0.68 
 "float g" [0.79] 
  
+#"float beta_m" 7.44 "float beta_n" 6.88 "float alpha" 1.81 "rgb sigma_c_a" [0.12 0.25 0.37] 
+#"float sigma_m_s" 2.30 "float sigma_m_a" 0.14
+#"float k" 0.65
+#"float eta" 1.19
+#"float cuticle_layers" 2
+#"float g" 0.08
+
+
 AttributeBegin
 Shape "furde" "point P" [0 0 0  0 1 0  1 0 0  1 1 0  ] "string type" "cylinder" "float width" 0.2
 

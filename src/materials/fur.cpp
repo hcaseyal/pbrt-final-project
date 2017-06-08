@@ -19,13 +19,28 @@ inline Float Theta(int p, Float thetaI, const Float alphas[]);
 inline Float TrimmedLogistic(Float x, Float s, Float a, Float b);
 
 // fur Local Functions
+static int indexFromValue(Float value, Float rangeSize, Float minRange, int numSteps) {
+	return roundf((value - minRange) / (rangeSize / (numSteps - 1)));
+}
+
 // Mp(θi, θr) = G(θr; −θi + αp, βp),
-static Float Mp(Float thetaI, Float thetaR, const Float alphas[], int p, Float stdev) {
-	Float dtheta = thetaR - Theta(p, thetaI, alphas);
-	// Remap _dtheta_ to $[-\pi,\pi]$
-	while (dtheta > Pi) dtheta -= 2 * Pi;
-	while (dtheta < -Pi) dtheta += 2 * Pi;
-	return TrimmedLogistic(dtheta, stdev, -Pi, Pi);
+static Float Mp(Float thetaI, Float thetaO, const Float alphas[], int p, Float stdev, Float sigma_m_s, Float k, Float g) {
+	Float mp;
+	if (p == 3 || p == 4) {
+		int num_scattering_inner = indexFromValue(sigma_m_s / k, 20, 0, NUM_SCATTERING_INNER);
+		int num_theta = indexFromValue(thetaI, Pi, Pi / 2, NUM_THETA);  // Theta is supposed to be between -pi/2 and pi/2?
+		int num_g = indexFromValue(g, 8, 0, NUM_G);
+		int num_bin = indexFromValue(thetaO, Pi, Pi / 2, NUM_BINS);
+		mp = scatteredM[num_scattering_inner][num_theta][num_g][num_bin];
+	}
+	else {
+		Float dtheta = thetaO - Theta(p, thetaI, alphas);
+		// Remap _dtheta_ to $[-\pi,\pi]$
+		while (dtheta > Pi) dtheta -= 2 * Pi;
+		while (dtheta < -Pi) dtheta += 2 * Pi;
+		mp = TrimmedLogistic(dtheta, stdev, -Pi, Pi);
+	}
+	return mp;
 }
 
 inline Float I0(Float x) {
@@ -65,8 +80,8 @@ static std::array<Spectrum, 2> attenuation_scattered(Float cosThetaO, Float eta,
 }
 
 static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
-                                         const Spectrum &T, Float cuticle_layers) {
-	std::array<Spectrum, pMax + 1> ap;
+                                         const Spectrum &T, Float cuticle_layers, Float k, const Spectrum &T_s) {
+	std::array<Spectrum, pMaxFur + 1> ap;
 	// Compute $p=0$ attenuation at initial cylinder intersection
 	Float cosGammaO = SafeSqrt(1 - h * h);
 	Float cosTheta = cosThetaO * cosGammaO;
@@ -76,12 +91,18 @@ static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
 
 	// Compute $p=1$ attenuation term
 	ap[1] = Sqr(1 - f) * T;
-	// Compute attenuation terms up to $p=_pMax_$
-	for (int p = 2; p < pMax; ++p) {
+	// Compute attenuation terms up to $p=_pMaxFur_$
+	for (int p = 2; p < 3; ++p) {
 		ap[p] = ap[p - 1] * T * f;
 	}
+
+	// Now do scattered lobes
+	std::array<Spectrum, 2> scatteredAttenuations = attenuation_scattered(cosThetaO, eta, h, T, cuticle_layers, k, T_s);
+	ap[3] = scatteredAttenuations[0];
+	ap[4] = scatteredAttenuations[1];
+
 	// Compute attenuation term accounting for remaining orders of scattering
-	ap[pMax] = ap[pMax - 1] * f * T / (Spectrum(1.f) - T * f);
+	ap[5] = ap[2] * f * T / (Spectrum(1.f) - T * f);
 	return ap;
 }
 
@@ -107,12 +128,26 @@ inline Float TrimmedLogistic(Float x, Float s, Float a, Float b) {
     return Logistic(x, s) / (LogisticCDF(b, s) - LogisticCDF(a, s));
 }
 
-inline Float Np(Float phi, int p, Float stdev, Float gammaO, Float gammaT) {
-    Float dphi = phi - Phi(p, gammaO, gammaT);
-    // Remap _dphi_ to $[-\pi,\pi]$
-    while (dphi > Pi) dphi -= 2 * Pi;
-    while (dphi < -Pi) dphi += 2 * Pi;
-    return TrimmedLogistic(dphi, stdev, -Pi, Pi);
+inline Float Np(Float phi, int p, Float stdev, Float gammaO, Float gammaT, Float h, Float k, Float sigma_m_s, Float g) {
+	int num_scattering_inner = indexFromValue(sigma_m_s / k, 20, 0, NUM_SCATTERING_INNER);
+	int num_g = indexFromValue(g, 8, 0, NUM_G);
+	Float np;
+	if (p == 3 || p == 4) {
+		//azimuthal
+		Float gammaI = SafeASin(h);
+		int num_h = indexFromValue(h / k, 2, -1, NUM_H);
+		float chunk = (gammaT - gammaI) + (p - 3) * (Pi + 2 * gammaT);
+
+		int num_bin_s = indexFromValue(phi - chunk, Pi, Pi / 2, NUM_BINS);
+		np = scattered[num_scattering_inner][num_h][num_g][num_bin_s];
+	} else {
+		Float dphi = phi - Phi(p, gammaO, gammaT);
+		// Remap _dphi_ to $[-\pi,\pi]$
+		while (dphi > Pi) dphi -= 2 * Pi;
+		while (dphi < -Pi) dphi += 2 * Pi;
+		np = TrimmedLogistic(dphi, stdev, -Pi, Pi);
+	}
+	return np;
 }
 
 static Float SampleTrimmedLogistic(Float u, Float s, Float a, Float b) {
@@ -248,10 +283,10 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Spectrum sigma_c_a
     stdev_longitudinal[0] = beta_m;
     stdev_longitudinal[1] = beta_m / 2;
     stdev_longitudinal[2] = 3 * beta_m / 2;
-
+	
 	// TRRT
-	stdev_azimuthal[3] = 2 * beta_n;
-	stdev_longitudinal[3] = 5 * beta_m / 2;
+	stdev_azimuthal[pMaxFur] = 2 * beta_n;
+	stdev_longitudinal[pMaxFur] = 5 * beta_m / 2;
 
     // Compute azimuthal logistic scale factor from $\beta_n$
     s = SqrtPiOver8Fur *
@@ -262,6 +297,7 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Spectrum sigma_c_a
 	alphas[0] = alpha;
 	alphas[1] = -alpha / 2;
 	alphas[2] = -3 * alpha / 2;
+	alphas[pMaxFur] = -5 * alpha / 2;
 
     // Compute $\alpha$ terms for Fur scales
     sin2kAlpha[0] = std::sin(Radians(alpha));
@@ -308,7 +344,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 
 	// TODO: stuff below is incorrect
 	Spectrum numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
-	printf("s_c: %f, s_m: %f \n", s_c, s_m);
+	//printf("s_c: %f, s_m: %f \n", s_c, s_m);
 	Float thetaD = (thetaO - thetaI) / 2;
 	Float denom = cosf(thetaD);
 	Spectrum T;
@@ -322,7 +358,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	}
 
 	Spectrum T_s;
-	Spectrum numerator_s = -1 * (s_c + 1 + k) * sigma_c_a + k * sigma_m_a;
+	Spectrum numerator_s = -1 * ((s_c + 1 + k) * sigma_c_a + k * sigma_m_a);
 	if (denom > 0) {
 		T_s = Exp(numerator / denom);
 	}
@@ -330,55 +366,55 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 		T_s = Spectrum(0.f);
 		printf("Transmittance 0!\n");
 	}
-	
 
     // Evaluate Fur BSDF
     Float phi = phiI - phiO;
-    std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers);
-	std::array<Spectrum, 2> asp = attenuation_scattered(cosThetaO, eta, h, T, cuticle_layers, k, T_s);
+    std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers, k, T_s);
 
+	Float gammaI = SafeASin(h);
     Spectrum fsum(0.);
     for (int p = 0; p < pMaxFur; ++p) {
 		// Compute reflected angle
-		Float mp = Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]);
+		Float mp = Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p], sigma_m_s, k, g);
 		Spectrum apVal = ap[p];
-        Float np = Np(phi, p, stdev_azimuthal[p], gammaO, gammaT);
+        Float np = Np(phi, p, stdev_azimuthal[p], gammaO, gammaT, h, k, sigma_m_s, g);
 		fsum += mp * apVal * np;
+		if (std::isnan(fsum.y())) {
+			printf("\napval %f p %f np %f mp %f \n\n", apVal.y(), p, np, mp);
+		}
+		CHECK(!std::isinf(fsum.y()));
+		CHECK(!std::isnan(fsum.y()));
     }
 	// Compute contribution of remaining terms
-	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) * ap[pMaxFur] /
+	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur], sigma_m_s, k, g) * ap[pMaxFur] /
 		(2.f * Pi);
-	
-	// Compute Scattering lobes
-	Float gammaI = SafeASin(h);
-	fsum += computeScatteringLobes(thetaI, thetaO, phiO, asp, gammaT, gammaI);
+
+	//fsum += computeScatteringLobes(thetaI, thetaO, phiO, ap, gammaT, gammaI);
 	// TODO: Paper says to divide by Sqr(cosThetaI), is that right?
-	fsum /= Sqr(cosThetaI);
+	if (abs(cosThetaI) > 0) {
+		fsum /= Sqr(cosThetaI);
+	}
 
 	// TODO: do we need below?
 	if (AbsCosTheta(wi) > 0) {
 		//fsum /= AbsCosTheta(wi);
 	}
+
+	if (std::isnan(fsum.y())) {
+		printf("\nmp %f ap %f \n", Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur], sigma_m_s, k, g), ap[pMaxFur]);
+	}
 	CHECK(!std::isinf(fsum.y()));
 	CHECK(!std::isnan(fsum.y()));
+	
     return fsum;
 }
 
-static int indexFromValue(Float value, Float rangeSize, Float minRange, int numSteps) {
-	return roundf((value - minRange) / (rangeSize / (numSteps - 1)));
-}
-
-
 // TODO: we can precompute most of this floating point stuff
 Spectrum FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phiO, std::array<Spectrum, 2> asp, Float gammaT, Float gammaI) const {
-	//extern float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
-	//extern float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
-	//extern float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
-	//extern float integratedM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
 	// Longitudinal
 	int num_scattering_inner = indexFromValue(sigma_m_s / k, 20, 0, NUM_SCATTERING_INNER);
+	int num_g = indexFromValue(g, 8, 0, NUM_G);
 	int num_theta = indexFromValue(thetaI, Pi, Pi / 2, NUM_THETA);  // Theta is supposed to be between -pi/2 and pi/2?
-	int num_g = indexFromValue(g, 8, 0, NUM_G); 
 	int num_bin = indexFromValue(thetaO, Pi, Pi / 2, NUM_BINS);
 	float mp = scatteredM[num_scattering_inner][num_theta][num_g][num_bin];
 
@@ -403,7 +439,8 @@ Spectrum FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phiO,
 
 std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
     // Compute array of $A_p$ values for _cosThetaO_
-    Float sinThetaO = SafeSqrt(1 - cosThetaO * cosThetaO);
+	Float sinThetaO = SafeSqrt(1 - cosThetaO * cosThetaO);
+	Float thetaO = std::asinf(sinThetaO);
 
     // Compute $\cos \thetat$ for refracted ray
     Float sinThetaT = sinThetaO / eta;
@@ -415,9 +452,34 @@ std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
     Float cosGammaT = SafeSqrt(1 - Sqr(sinGammaT));
     Float gammaT = SafeASin(sinGammaT);
 
-    // Compute the transmittance _T_ of a single path through the cylinder
-    Spectrum T = Exp(-sigma_a * (2 * cosGammaT / cosThetaT));
-    std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers);
+	// Compute the transmittance _T_ of a single path through the cylinder
+	Spectrum T = Exp(-sigma_a * (2 * cosGammaT / cosThetaT));
+
+	Float s_m;
+	Float term = pow(k, 2) - pow(sinGammaT, 2);
+	if (term < 0) {
+		s_m = 0;
+	}
+	else {
+		s_m = std::sqrt(term);
+	}
+	Float s_c = cosGammaT - s_m;
+
+	Spectrum numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
+	// TODO: How to calculate thetaI?
+	Float thetaI = 0.f;
+	Float thetaD = (thetaO - thetaI) / 2;
+	Float denom = cosf(thetaD);
+
+	Spectrum T_s;
+	Spectrum numerator_s = -1 * ((s_c + 1 + k) * sigma_c_a + k * sigma_m_a);
+	if (denom > 0) {
+		T_s = Exp(numerator / denom);
+	} else {
+		T_s = Spectrum(0.f);
+	}
+
+    std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers, k, T_s);
 
 
     // Compute $A_p$ PDF from individual $A_p$ terms
@@ -431,6 +493,7 @@ std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
 
 Spectrum FurBSDF::Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u2,
                             Float *pdf, BxDFType *sampledType) const {
+
     // Compute Fur coordinate system terms related to _wo_
     Float sinThetaO = wo.x;
     Float cosThetaO = SafeSqrt(1 - Sqr(sinThetaO));
@@ -516,10 +579,10 @@ Spectrum FurBSDF::Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u2,
 
         // Handle out-of-range $\cos \thetai$ from scale adjustment
         cosThetaIp = std::abs(cosThetaIp);
-		*pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) * apPdf[p] *
-			Np(dphi, p, s, gammaO, gammaT);
+		*pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p], sigma_m_s, k, g) * apPdf[p] *
+			Np(dphi, p, s, gammaO, gammaT, h, k, sigma_m_s, g);
     }
-    *pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) *
+    *pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p], sigma_m_s, k, g) *
             apPdf[pMaxFur] * (1 / (2 * Pi));
     // if (std::abs(wi->x) < .9999) CHECK_NEAR(*pdf, Pdf(wo, *wi), .01);
     return f(wo, *wi);
@@ -576,10 +639,10 @@ Float FurBSDF::Pdf(const Vector3f &wo, const Vector3f &wi) const {
 
         // Handle out-of-range $\cos \thetai$ from scale adjustment
         cosThetaIp = std::abs(cosThetaIp);
-        pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]) *
-               apPdf[p] * Np(phi, p, s, gammaO, gammaT);
+        pdf += Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p], sigma_m_s, k, g) *
+               apPdf[p] * Np(phi, p, s, gammaO, gammaT, h, k, sigma_m_s, g);
     }
-    pdf += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) *
+    pdf += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur], sigma_m_s, k, g) *
            apPdf[pMaxFur] * (1 / (2 * Pi));
     return pdf;
 }

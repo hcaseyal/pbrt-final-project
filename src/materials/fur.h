@@ -62,7 +62,7 @@ class FurMaterial : public Material {
 FurMaterial *CreateFurMaterial(const TextureParams &mp);
 
 // FurBSDF Constants
-static const int pMaxFur = 3;
+static const int pMaxFur = 5;
 static const Float SqrtPiOver8Fur = 0.626657069f;
 
 // FurBSDF Declarations
