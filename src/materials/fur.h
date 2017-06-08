@@ -31,7 +31,8 @@ class FurMaterial : public Material {
 			     const std::shared_ptr<Texture<Float>> &sigma_m_a,
 				 const std::shared_ptr<Texture<Float>> &sigma_m_s,
 				 const std::shared_ptr<Texture<Float>> &k,
-				 const std::shared_ptr<Texture<Float>> &cuticle_layers)
+				 const std::shared_ptr<Texture<Float>> &cuticle_layers,
+				 const std::shared_ptr<Texture<Float>> &g)
         : sigma_a(sigma_a),
           color(color),
           eumelanin(eumelanin),
@@ -44,7 +45,8 @@ class FurMaterial : public Material {
 		  sigma_m_a(sigma_m_a),
 		  sigma_m_s(sigma_m_s),
 		  k(k),
-		  cuticle_layers(cuticle_layers){}
+		  cuticle_layers(cuticle_layers),
+		  g(g){}
     void ComputeScatteringFunctions(SurfaceInteraction *si, MemoryArena &arena,
                                     TransportMode mode,
                                     bool allowMultipleLobes) const;
@@ -54,7 +56,7 @@ class FurMaterial : public Material {
     std::shared_ptr<Texture<Spectrum>> sigma_a, sigma_c_a, color;
     std::shared_ptr<Texture<Float>> eumelanin, pheomelanin, eta;
     std::shared_ptr<Texture<Float>> beta_m, beta_n, alpha;
-	std::shared_ptr<Texture<Float>> sigma_m_a, sigma_m_s, k, cuticle_layers;
+	std::shared_ptr<Texture<Float>> sigma_m_a, sigma_m_s, k, cuticle_layers, g;
 };
 
 FurMaterial *CreateFurMaterial(const TextureParams &mp);
@@ -68,7 +70,7 @@ class FurBSDF : public BxDF {
   public:
     // FurBSDF Public Methods
     FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Spectrum sigma_c_a, Float sigma_m_a, Float sigma_m_s, 
-		Float beta_m, Float beta_n, Float alpha, Float k, Float cuticle_layers);
+		Float beta_m, Float beta_n, Float alpha, Float k, Float cuticle_layers, Float g);
     Spectrum f(const Vector3f &wo, const Vector3f &wi) const;
     Spectrum Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u,
                       Float *pdf, BxDFType *sampledType) const;
@@ -80,6 +82,8 @@ class FurBSDF : public BxDF {
   private:
     // FurBSDF Private Methods
     std::array<Float, pMaxFur + 1> ComputeApPdf(Float cosThetaO) const;
+
+	float FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phi) const;
 
     // FurBSDF Private Data
     const Float h, gammaO, eta;
@@ -95,6 +99,7 @@ class FurBSDF : public BxDF {
 	Float sigma_m_s;
 	Float k; // medullary index (rel. radius length)
 	Float cuticle_layers;
+	Float g;
 };
 
 }  // namespace pbrt

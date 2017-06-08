@@ -142,7 +142,8 @@ void FurMaterial::ComputeScatteringFunctions(SurfaceInteraction *si,
     Float h = -1 + 2 * si->uv[1];
 	Float k_ = k->Evaluate(*si);
 	Float cuticle_layers_ = cuticle_layers->Evaluate(*si);
-    si->bsdf->Add(ARENA_ALLOC(arena, FurBSDF)(h, e, sig_a, sigma_c_a_, sigma_m_a_, sigma_m_s_, bm, bn, a, k_, cuticle_layers_));
+	Float g_ = g->Evaluate(*si);
+    si->bsdf->Add(ARENA_ALLOC(arena, FurBSDF)(h, e, sig_a, sigma_c_a_, sigma_m_a_, sigma_m_s_, bm, bn, a, k_, cuticle_layers_, g_));
 }
 
 FurMaterial *CreateFurMaterial(const TextureParams &mp) {
@@ -204,13 +205,14 @@ FurMaterial *CreateFurMaterial(const TextureParams &mp) {
 	std::shared_ptr<Texture<Float>> sigma_m_s = mp.GetFloatTexture("sigma_m_s", 3.15f);
 	std::shared_ptr<Texture<Float>> k = mp.GetFloatTexture("k", 0.86f);
 	std::shared_ptr<Texture<Float>> cuticle_layers = mp.GetFloatTexture("cuticle_layers", 0.68f);
+	std::shared_ptr<Texture<Float>> g = mp.GetFloatTexture("g", 0.79f);
     return new FurMaterial(sigma_a, color, eumelanin, pheomelanin, eta, beta_m,
-                            beta_n, alpha, sigma_c_a, sigma_m_a, sigma_m_s, k, cuticle_layers);
+                            beta_n, alpha, sigma_c_a, sigma_m_a, sigma_m_s, k, cuticle_layers, g);
 }
 
 // FurBSDF Method Definitions
 FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Spectrum sigma_c_a, Float sigma_m_a, Float sigma_m_s,
-	Float beta_m, Float beta_n, Float alpha, Float k, Float cuticle_layers)
+	Float beta_m, Float beta_n, Float alpha, Float k, Float cuticle_layers, Float g)
     : BxDF(BxDFType(BSDF_GLOSSY | BSDF_REFLECTION | BSDF_TRANSMISSION)),
       h(h),
       gammaO(SafeASin(h)),
@@ -222,7 +224,8 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Spectrum sigma_c_a
       beta_m(beta_m),
       beta_n(beta_n),
 	  k(k),
-	  cuticle_layers(cuticle_layers){
+	  cuticle_layers(cuticle_layers),
+	  g(g){
     CHECK(h >= -1 && h <= 1);
 	stdev_azimuthal[0] = beta_n;
 	stdev_azimuthal[1] = sqrt(2) * beta_n;
@@ -341,12 +344,38 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) * ap[pMaxFur] /
 		(2.f * Pi);
 	
+	// Compute Scattering lobes
+	fsum += computeScatteringLobes(thetaI, thetaO, phi);
 	// TODO: Paper says to divide by Sqr(cosThetaI), is that right?
 	fsum /= Sqr(cosThetaI);
     if (AbsCosTheta(wi) > 0) fsum /= AbsCosTheta(wi);
 	CHECK(!std::isinf(fsum.y()));
 	CHECK(!std::isnan(fsum.y()));
     return fsum;
+}
+
+static int indexFromValue(Float value, Float rangeSize, Float minRange, int numSteps) {
+	return roundf((value - minRange) / (rangeSize / (numSteps - 1)));
+}
+
+float FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phi) const {
+	//extern float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
+	//extern float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
+	//extern float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
+	//extern float integratedM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
+	// Longitudinal
+	int num_scattering_inner = indexFromValue(sigma_m_s, 20, 0, NUM_SCATTERING_INNER);
+	int num_theta = indexFromValue(thetaI, Pi, Pi / 2, NUM_THETA);  // Theta is supposed to be between -pi/2 and pi/2?
+	int num_g = indexFromValue(g, 8, 0, NUM_G); 
+	int num_bin = (thetaO + (Pi / 2)) / NUM_BINS;
+	float scatteredMPhiIsZero = scatteredM[num_scattering_inner][num_theta][num_g][num_bin];
+	float scatteredMPhiIsPi = integratedM[num_scattering_inner][num_theta][num_g][num_bin];
+	float normalizedPhi = phi / Pi;
+
+	float longitudinal = Lerp(normalizedPhi, scatteredMPhiIsZero, scatteredMPhiIsPi);
+
+	//TODO: azimuthal
+	return longitudinal;
 }
 
 std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {

@@ -53,10 +53,10 @@ namespace pbrt {
 // Storage for precomputed data
 // TODO: move these into the appropriate class
 
-extern float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
-extern float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
-extern float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
-extern float integratedM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
+extern float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS]; // Azimuthal
+extern float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS]; // Azimuthal
+extern float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS]; // Longitudinal
+extern float integratedM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS]; // Longitudinal
 
 // TransportMode Declarations
 enum class TransportMode { Radiance, Importance };
