@@ -91,10 +91,7 @@ static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
 
 	// Compute $p=1$ attenuation term
 	ap[1] = Sqr(1 - f) * T;
-	// Compute attenuation terms up to $p=_pMaxFur_$
-	for (int p = 2; p < 3; ++p) {
-		ap[p] = ap[p - 1] * T * f;
-	}
+	ap[2] = ap[1] * T * f;
 
 	// Now do scattered lobes
 	std::array<Spectrum, 2> scatteredAttenuations = attenuation_scattered(cosThetaO, eta, h, T, cuticle_layers, k, T_s);
