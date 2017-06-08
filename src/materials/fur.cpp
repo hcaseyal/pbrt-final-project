@@ -307,22 +307,20 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	Float s_c = cosGammaT - s_m;
 
 	// TODO: stuff below is incorrect
-	Spectrum numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
-	printf("s_c: %f, s_m: %f \n", s_c, s_m);
+	Spectrum numerator = -1 * (2 * s_c * sigma_c_a + 0.1 * s_m * (sigma_m_a + sigma_m_s));
 	Float thetaD = (thetaO - thetaI) / 2;
 	Float denom = cosf(thetaD);
 	Spectrum T;
 	if (denom > 0) {
 		// TODO: why is transmittance so low?
 		T = Exp(numerator / denom);
-	}
-	else {
+	} else {
 		T = Spectrum(0.f);
 		printf("Transmittance 0!\n");
 	}
 
 	Spectrum T_s;
-	Spectrum numerator_s = -1 * (s_c + 1 + k) * sigma_c_a + k * sigma_m_a;
+	Spectrum numerator_s = -1 *((s_c + 1 - k) * sigma_c_a + k * sigma_m_a);
 	if (denom > 0) {
 		T_s = Exp(numerator / denom);
 	}
@@ -353,12 +351,10 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	Float gammaI = SafeASin(h);
 	fsum += computeScatteringLobes(thetaI, thetaO, phiO, asp, gammaT, gammaI);
 	// TODO: Paper says to divide by Sqr(cosThetaI), is that right?
-	fsum /= Sqr(cosThetaI);
-
-	// TODO: do we need below?
-	if (AbsCosTheta(wi) > 0) {
-		//fsum /= AbsCosTheta(wi);
+	if (Sqr(cosThetaI > 0)) {
+		fsum /= Sqr(cosThetaI);
 	}
+
 	CHECK(!std::isinf(fsum.y()));
 	CHECK(!std::isnan(fsum.y()));
     return fsum;
@@ -371,10 +367,6 @@ static int indexFromValue(Float value, Float rangeSize, Float minRange, int numS
 
 // TODO: we can precompute most of this floating point stuff
 Spectrum FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phiO, std::array<Spectrum, 2> asp, Float gammaT, Float gammaI) const {
-	//extern float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
-	//extern float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
-	//extern float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
-	//extern float integratedM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
 	// Longitudinal
 	int num_scattering_inner = indexFromValue(sigma_m_s / k, 20, 0, NUM_SCATTERING_INNER);
 	int num_theta = indexFromValue(thetaI, Pi, Pi / 2, NUM_THETA);  // Theta is supposed to be between -pi/2 and pi/2?
@@ -476,7 +468,13 @@ Spectrum FurBSDF::Sample_f(const Vector3f &wo, Vector3f *wi, const Point2f &u2,
     // Sample $N_p$ to compute $\Delta\phi$
 
     // Compute $\gammat$ for refracted ray
-    Float etap = std::sqrt(eta * eta - Sqr(sinThetaO)) / cosThetaO;
+	Float etap = std::sqrt(eta * eta - Sqr(sinThetaO));
+	if (cosThetaO == 0) {
+		etap /= 0.0000001;
+	}
+	else {
+		etap /= cosThetaO;
+	}
     Float sinGammaT = h / etap;
     Float cosGammaT = SafeSqrt(1 - Sqr(sinGammaT));
     Float gammaT = SafeASin(sinGammaT);
