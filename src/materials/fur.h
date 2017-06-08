@@ -83,7 +83,7 @@ class FurBSDF : public BxDF {
     // FurBSDF Private Methods
     std::array<Float, pMaxFur + 1> ComputeApPdf(Float cosThetaO) const;
 
-	float FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phi) const;
+	Spectrum FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phiO, std::array<Spectrum, 2> asp, Float gammaT, Float gammaI) const;
 
     // FurBSDF Private Data
     const Float h, gammaO, eta;

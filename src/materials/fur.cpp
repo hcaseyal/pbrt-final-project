@@ -50,6 +50,20 @@ inline Float LogI0(Float x) {
         return std::log(I0(x));
 }
 
+static std::array<Spectrum, 2> attenuation_scattered(Float cosThetaO, Float eta, Float h, Spectrum T, Float cuticle_layers, Float k, Spectrum T_s) {
+	std::array<Spectrum, 2> ap;
+	// Compute $p=3$ attenuation at initial cylinder intersection
+	Float cosGammaO = SafeSqrt(1 - h * h);
+	Float cosTheta = cosThetaO * cosGammaO;
+	Float dielectric = FrDielectric(cosTheta, 1.f, eta);
+	Float f = (cuticle_layers * dielectric) / (1 + (cuticle_layers - 1) * dielectric);
+	ap[0] = f * T_s;
+
+	// Compute $p=4$ attenuation term
+	ap[1] = ap[0] * (1 - f) * T;
+	return ap;
+}
+
 static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
                                          const Spectrum &T, Float cuticle_layers) {
 	std::array<Spectrum, pMax + 1> ap;
@@ -288,64 +302,56 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 		s_m = 0;
 	}
 	else {
-		s_m = sqrt(term);
+		s_m = std::sqrt(term);
 	}
 	Float s_c = cosGammaT - s_m;
 
 	// TODO: stuff below is incorrect
-	Spectrum numerator =  (2 * s_c * sigma_c_a + 0.2 * s_m * (sigma_m_a + sigma_m_s));
+	Spectrum numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
+	printf("s_c: %f, s_m: %f \n", s_c, s_m);
 	Float thetaD = (thetaO - thetaI) / 2;
 	Float denom = cosf(thetaD);
 	Spectrum T;
 	if (denom > 0) {
 		// TODO: why is transmittance so low?
-		T = Exp(-numerator / denom);
+		T = Exp(numerator / denom);
 	}
 	else {
 		T = Spectrum(0.f);
 		printf("Transmittance 0!\n");
 	}
 
+	Spectrum T_s;
+	Spectrum numerator_s = -1 * (s_c + 1 + k) * sigma_c_a + k * sigma_m_a;
+	if (denom > 0) {
+		T_s = Exp(numerator / denom);
+	}
+	else {
+		T_s = Spectrum(0.f);
+		printf("Transmittance 0!\n");
+	}
+	
+
     // Evaluate Fur BSDF
     Float phi = phiI - phiO;
     std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers);
+	std::array<Spectrum, 2> asp = attenuation_scattered(cosThetaO, eta, h, T, cuticle_layers, k, T_s);
+
     Spectrum fsum(0.);
     for (int p = 0; p < pMaxFur; ++p) {
-        // Compute $\sin \thetai$ and $\cos \thetai$ terms accounting for scales
-        Float sinThetaIp, cosThetaIp;
-        if (p == 0) {
-            sinThetaIp = sinThetaI * cos2kAlpha[1] + cosThetaI * sin2kAlpha[1];
-            cosThetaIp = cosThetaI * cos2kAlpha[1] - sinThetaI * sin2kAlpha[1];
-        }
-
-        // Handle remainder of $p$ values for Fur scale tilt
-        else if (p == 1) {
-            sinThetaIp = sinThetaI * cos2kAlpha[0] - cosThetaI * sin2kAlpha[0];
-            cosThetaIp = cosThetaI * cos2kAlpha[0] + sinThetaI * sin2kAlpha[0];
-        } else if (p == 2) {
-            sinThetaIp = sinThetaI * cos2kAlpha[2] - cosThetaI * sin2kAlpha[2];
-            cosThetaIp = cosThetaI * cos2kAlpha[2] + sinThetaI * sin2kAlpha[2];
-        } else {
-            sinThetaIp = sinThetaI;
-            cosThetaIp = cosThetaI;
-        }
-
-        // Handle out-of-range $\cos \thetai$ from scale adjustment
-        cosThetaIp = std::abs(cosThetaIp);
-
 		// Compute reflected angle
 		Float mp = Mp(thetaI, thetaO, alphas, p, stdev_longitudinal[p]);
 		Spectrum apVal = ap[p];
         Float np = Np(phi, p, stdev_azimuthal[p], gammaO, gammaT);
 		fsum += mp * apVal * np;
-
     }
 	// Compute contribution of remaining terms
 	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) * ap[pMaxFur] /
 		(2.f * Pi);
 	
 	// Compute Scattering lobes
-	fsum += computeScatteringLobes(thetaI, thetaO, phi);
+	Float gammaI = SafeASin(h);
+	fsum += computeScatteringLobes(thetaI, thetaO, phiO, asp, gammaT, gammaI);
 	// TODO: Paper says to divide by Sqr(cosThetaI), is that right?
 	fsum /= Sqr(cosThetaI);
 
@@ -362,8 +368,9 @@ static int indexFromValue(Float value, Float rangeSize, Float minRange, int numS
 	return roundf((value - minRange) / (rangeSize / (numSteps - 1)));
 }
 
+
 // TODO: we can precompute most of this floating point stuff
-float FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phiO) const {
+Spectrum FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phiO, std::array<Spectrum, 2> asp, Float gammaT, Float gammaI) const {
 	//extern float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
 	//extern float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
 	//extern float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
@@ -372,16 +379,26 @@ float FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phiO) co
 	int num_scattering_inner = indexFromValue(sigma_m_s / k, 20, 0, NUM_SCATTERING_INNER);
 	int num_theta = indexFromValue(thetaI, Pi, Pi / 2, NUM_THETA);  // Theta is supposed to be between -pi/2 and pi/2?
 	int num_g = indexFromValue(g, 8, 0, NUM_G); 
-	int num_bin = (thetaO + (Pi / 2)) / NUM_BINS;
-	float longitudinal = scatteredM[num_scattering_inner][num_theta][num_g][num_bin];
-	//float scatteredMPhiIsPi = integratedM[num_scattering_inner][num_theta][num_g][num_bin];
-	//float normalizedPhi = phiO / Pi;
-	//float longitudinal = Lerp(normalizedPhi, scatteredMPhiIsZero, scatteredMPhiIsPi);
+	int num_bin = indexFromValue(thetaO, Pi, Pi / 2, NUM_BINS);
+	float mp = scatteredM[num_scattering_inner][num_theta][num_g][num_bin];
 
 	//azimuthal
 	int num_h = indexFromValue(h / k, 2, -1, NUM_H);
-	float azimuthal = scattered[num_scattering_inner][num_h][num_g][num_bin];
-	return longitudinal + azimuthal;
+	float chunk = (gammaT - gammaI);
+
+	int num_bin_s = indexFromValue(phiO - chunk, Pi, Pi / 2, NUM_BINS); 
+	float dsp = scattered[num_scattering_inner][num_h][num_g][num_bin_s];
+	Spectrum np = asp[0] * dsp; 
+	Spectrum firstLobe = mp * np;
+
+	float chunk2 = 3 * gammaT - gammaI + Pi;
+
+	int num_bin_s_second = indexFromValue(phiO - chunk2, Pi, Pi / 2, NUM_BINS);
+	float dsp2 = scattered[num_scattering_inner][num_h][num_g][num_bin_s_second];
+	Spectrum np2 = asp[1] * dsp2;
+	Spectrum secondLobe = mp * np2;
+
+	return firstLobe + secondLobe;
 }
 
 std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
@@ -401,6 +418,7 @@ std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
     // Compute the transmittance _T_ of a single path through the cylinder
     Spectrum T = Exp(-sigma_a * (2 * cosGammaT / cosThetaT));
     std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers);
+
 
     // Compute $A_p$ PDF from individual $A_p$ terms
     std::array<Float, pMaxFur + 1> apPdf;
