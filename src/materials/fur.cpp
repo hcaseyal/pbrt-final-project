@@ -292,7 +292,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	}
 	Float s_c = cosGammaT - s_m;
 
-	// TODO: check the maths below. I used 0.2 instead of 2
+	// TODO: stuff below is incorrect
 	Spectrum numerator =  (2 * s_c * sigma_c_a + 0.2 * s_m * (sigma_m_a + sigma_m_s));
 	Float thetaD = (thetaO - thetaI) / 2;
 	Float denom = cosf(thetaD);
@@ -348,7 +348,11 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	fsum += computeScatteringLobes(thetaI, thetaO, phi);
 	// TODO: Paper says to divide by Sqr(cosThetaI), is that right?
 	fsum /= Sqr(cosThetaI);
-    if (AbsCosTheta(wi) > 0) fsum /= AbsCosTheta(wi);
+
+	// TODO: do we need below?
+	if (AbsCosTheta(wi) > 0) {
+		//fsum /= AbsCosTheta(wi);
+	}
 	CHECK(!std::isinf(fsum.y()));
 	CHECK(!std::isnan(fsum.y()));
     return fsum;
@@ -358,24 +362,26 @@ static int indexFromValue(Float value, Float rangeSize, Float minRange, int numS
 	return roundf((value - minRange) / (rangeSize / (numSteps - 1)));
 }
 
-float FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phi) const {
+// TODO: we can precompute most of this floating point stuff
+float FurBSDF::computeScatteringLobes(Float thetaI, Float thetaO, Float phiO) const {
 	//extern float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
 	//extern float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
 	//extern float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
 	//extern float integratedM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
 	// Longitudinal
-	int num_scattering_inner = indexFromValue(sigma_m_s, 20, 0, NUM_SCATTERING_INNER);
+	int num_scattering_inner = indexFromValue(sigma_m_s / k, 20, 0, NUM_SCATTERING_INNER);
 	int num_theta = indexFromValue(thetaI, Pi, Pi / 2, NUM_THETA);  // Theta is supposed to be between -pi/2 and pi/2?
 	int num_g = indexFromValue(g, 8, 0, NUM_G); 
 	int num_bin = (thetaO + (Pi / 2)) / NUM_BINS;
-	float scatteredMPhiIsZero = scatteredM[num_scattering_inner][num_theta][num_g][num_bin];
-	float scatteredMPhiIsPi = integratedM[num_scattering_inner][num_theta][num_g][num_bin];
-	float normalizedPhi = phi / Pi;
+	float longitudinal = scatteredM[num_scattering_inner][num_theta][num_g][num_bin];
+	//float scatteredMPhiIsPi = integratedM[num_scattering_inner][num_theta][num_g][num_bin];
+	//float normalizedPhi = phiO / Pi;
+	//float longitudinal = Lerp(normalizedPhi, scatteredMPhiIsZero, scatteredMPhiIsPi);
 
-	float longitudinal = Lerp(normalizedPhi, scatteredMPhiIsZero, scatteredMPhiIsPi);
-
-	//TODO: azimuthal
-	return longitudinal;
+	//azimuthal
+	int num_h = indexFromValue(h / k, 2, -1, NUM_H);
+	float azimuthal = scattered[num_scattering_inner][num_h][num_g][num_bin];
+	return longitudinal + azimuthal;
 }
 
 std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {

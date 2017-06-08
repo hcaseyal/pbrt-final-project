@@ -34,7 +34,7 @@ Shape "trianglemesh"
 Material 
 #"hair" "float eumelanin" 0.3
 "fur"
-"float beta_m" 9.45 "float beta_n" 17.63 "float alpha" 2.64 "rgb sigma_c_a" [0.2 4 6] 
+"float beta_m" 9.45 "float beta_n" 17.63 "float alpha" 2.64 "rgb sigma_c_a" [0.2 4 6] #[0.2 0.4 0.6] 
 "float sigma_m_s" 3.15 "float sigma_m_a" 0.21 "float k" 0.86 "float eta" 1.49 
 "float cuticle_layers" 0.68 
 "float g" [0.79] 
