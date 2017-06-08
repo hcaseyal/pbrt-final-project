@@ -1,6 +1,7 @@
 ﻿// materials/fur.cpp*
 #include <array>
 #include <numeric>
+
 #include "interaction.h"
 #include "materials/fur.h"
 #include "paramset.h"
@@ -61,18 +62,10 @@ static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
 
 	// Compute $p=1$ attenuation term
 	ap[1] = Sqr(1 - f) * T;
-	//printf("The float f: %f \n", f);
-	Float rgbF[3];
-	ap[1].ToRGB(rgbF);
-	//printf("2 apval: r: %f, g: %f, b: %f \n", rgbF[0], rgbF[1], rgbF[2]);
-	//printf("2 apval: r: %f, g: %f, b: %f \n", rgbF[0], rgbF[1], rgbF[2]);
 	// Compute attenuation terms up to $p=_pMax_$
 	for (int p = 2; p < pMax; ++p) {
 		ap[p] = ap[p - 1] * T * f;
 	}
-
-	ap[2].ToRGB(rgbF);
-	//printf("3 apval: r: %f, g: %f, b: %f \n\n", rgbF[0], rgbF[1], rgbF[2]);
 	// Compute attenuation term accounting for remaining orders of scattering
 	ap[pMax] = ap[pMax - 1] * f * T / (Spectrum(1.f) - T * f);
 	return ap;
@@ -263,7 +256,6 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Spectrum sigma_c_a
 }
 
 Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
-
     // Compute Fur coordinate system terms related to _wo_
     Float sinThetaO = wo.x;
     Float cosThetaO = SafeSqrt(1 - Sqr(sinThetaO));
@@ -297,17 +289,10 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	}
 	Float s_c = cosGammaT - s_m;
 
-	//TODO: remove
-	Float rgbSigma[3];
-	sigma_c_a.ToRGB(rgbSigma);
-
-
+	// TODO: check the maths below. I used 0.2 instead of 2
 	Spectrum numerator =  (2 * s_c * sigma_c_a + 0.2 * s_m * (sigma_m_a + sigma_m_s));
-	//printf("numerator: %f, %f, %f \n", rgb[0], rgb[1], rgb[2]);
 	Float thetaD = (thetaO - thetaI) / 2;
-	//printf("thetaD: %f \n", thetaD);
 	Float denom = cosf(thetaD);
-	//printf("denom: %f \n", denom);
 	Spectrum T;
 	if (denom > 0) {
 		// TODO: why is transmittance so low?
@@ -355,28 +340,12 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	// Compute contribution of remaining terms
 	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) * ap[pMaxFur] /
 		(2.f * Pi);
-
-	/*
-	TODO: remove
-	Float newRgb[3];
-	newRgb[0] = 0.2;
-	newRgb[1] = 0.4;
-	newRgb[2] = 0.6;
-	fsum = fsum.FromRGB(newRgb);
-	*/
-	/*
-	fsum *= 10;
-	Float rgbF[3];
-	fsum.ToRGB(rgbF);
-	printf("After adding 0.5: r: %f, g: %f, b: %f \n", rgbF[0], rgbF[1], rgbF[2]);
-	*/
+	
+	// TODO: Paper says to divide by Sqr(cosThetaI), is that right?
 	fsum /= Sqr(cosThetaI);
     if (AbsCosTheta(wi) > 0) fsum /= AbsCosTheta(wi);
 	CHECK(!std::isinf(fsum.y()));
 	CHECK(!std::isnan(fsum.y()));
-	//Float rgb[3];
-	//fsum.ToRGB(rgb);
-	//printf("Color: r: %f, g: %f, b: %f \n", rgb[0], rgb[1], rgb[2]);
     return fsum;
 }
 

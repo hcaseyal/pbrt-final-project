@@ -39,6 +39,13 @@
 #include "reflection.h"
 
 namespace pbrt {
+// Storage for precomputed data
+// TODO: move these into the appropriate class
+
+float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
+float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
+float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
+float integratedM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
 
 // Material Method Definitions
 Material::~Material() {}

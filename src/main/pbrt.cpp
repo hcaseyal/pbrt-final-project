@@ -34,6 +34,7 @@
 // main/pbrt.cpp*
 #include "pbrt.h"
 #include "api.h"
+#include "material.h"
 #include "parser.h"
 #include "parallel.h"
 #include <glog/logging.h>
@@ -70,11 +71,15 @@ Reformatting options:
 )");
 }
 
+
+
 // main program
 int main(int argc, char *argv[]) {
     google::InitGoogleLogging(argv[0]);
     FLAGS_stderrthreshold = 1; // Warning and above.
-
+	// Assumes that the precomputed data consists of 2 files in your Release directory
+	// TODO: Replace this absolute path 
+	Material::initialize("C:\\Users\\User\\Documents\\Github\\pbrt-final-project\\Release\\medulla");
     Options options;
     std::vector<std::string> filenames;
     // Process command-line arguments

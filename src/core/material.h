@@ -1,4 +1,3 @@
-
 /*
     pbrt source code is Copyright(c) 1998-2016
                         Matt Pharr, Greg Humphreys, and Wenzel Jakob.
@@ -38,11 +37,26 @@
 #ifndef PBRT_CORE_MATERIAL_H
 #define PBRT_CORE_MATERIAL_H
 
+ // Number of bins
+#define NUM_SCATTERING_INNER 64
+#define NUM_H 64
+#define NUM_THETA 64
+#define NUM_G 16
+#define NUM_BINS 720
+
 // core/material.h*
+
 #include "pbrt.h"
 #include "memory.h"
 
 namespace pbrt {
+// Storage for precomputed data
+// TODO: move these into the appropriate class
+
+extern float scattered[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
+extern float scatteredDist[NUM_SCATTERING_INNER][NUM_H][NUM_G][NUM_BINS];
+extern float scatteredM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
+extern float integratedM[NUM_SCATTERING_INNER][NUM_THETA][NUM_G][NUM_BINS];
 
 // TransportMode Declarations
 enum class TransportMode { Radiance, Importance };
@@ -58,6 +72,21 @@ class Material {
     virtual ~Material();
     static void Bump(const std::shared_ptr<Texture<Float>> &d,
                      SurfaceInteraction *si);
+	static void initialize(const char *medullaFilename) {
+		// Read precomputed medulla profiles (azimuthal)
+		FILE *fMedullaN = fopen((std::string(medullaFilename) + "_azimuthal.bin").c_str(), "rb");
+		CHECK(fMedullaN != NULL);
+		fread(scattered, sizeof(float), NUM_SCATTERING_INNER * NUM_H * NUM_G * NUM_BINS, fMedullaN);
+		fread(scatteredDist, sizeof(float), NUM_SCATTERING_INNER * NUM_H * NUM_G * NUM_BINS, fMedullaN);
+		fclose(fMedullaN);
+
+		// Read precomputed medulla profiles (longitudinal)
+		FILE *fMedullaM = fopen((std::string(medullaFilename) + "_longitudinal.bin").c_str(), "rb");
+		CHECK(fMedullaM != NULL);
+		fread(scatteredM, sizeof(float), NUM_SCATTERING_INNER * NUM_THETA * NUM_G * NUM_BINS, fMedullaM);
+		fread(integratedM, sizeof(float), NUM_SCATTERING_INNER * NUM_THETA * NUM_G * NUM_BINS, fMedullaM);
+		fclose(fMedullaM);
+	}
 };
 
 }  // namespace pbrt
