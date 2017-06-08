@@ -323,8 +323,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	Spectrum numerator_s = -1 *((s_c + 1 - k) * sigma_c_a + k * sigma_m_a);
 	if (denom > 0) {
 		T_s = Exp(numerator / denom);
-	}
-	else {
+	} else {
 		T_s = Spectrum(0.f);
 		printf("Transmittance 0!\n");
 	}
