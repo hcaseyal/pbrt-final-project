@@ -307,7 +307,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	Float s_c = cosGammaT - s_m;
 
 	// TODO: stuff below is incorrect
-	Spectrum numerator = -1 * (2 * s_c * sigma_c_a + 0.1 * s_m * (sigma_m_a + sigma_m_s));
+	Spectrum numerator = -1 * (2 * s_c * sigma_c_a + 0.3 * s_m * (sigma_m_a + sigma_m_s));
 	Float thetaD = (thetaO - thetaI) / 2;
 	Float denom = cosf(thetaD);
 	Spectrum T;
@@ -315,7 +315,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 		// TODO: why is transmittance so low?
 		T = Exp(numerator / denom);
 	} else {
-		T = Spectrum(0.f);
+		T = Spectrum(0.000001f);
 		printf("Transmittance 0!\n");
 	}
 
@@ -324,7 +324,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	if (denom > 0) {
 		T_s = Exp(numerator / denom);
 	} else {
-		T_s = Spectrum(0.f);
+		T_s = Spectrum(0.000001f);
 		printf("Transmittance 0!\n");
 	}
 	
@@ -341,11 +341,12 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 		Spectrum apVal = ap[p];
         Float np = Np(phi, p, stdev_azimuthal[p], gammaO, gammaT);
 		fsum += mp * apVal * np;
+		//printf("p: %f contribution: %f \n", p, fsum.y());
     }
 	// Compute contribution of remaining terms
 	fsum += Mp(thetaI, thetaO, alphas, pMaxFur, stdev_longitudinal[pMaxFur]) * ap[pMaxFur] /
 		(2.f * Pi);
-	
+	//printf("contribution: %f \n", fsum.y());
 	// Compute Scattering lobes
 	Float gammaI = SafeASin(h);
 	fsum += computeScatteringLobes(thetaI, thetaO, phiO, asp, gammaT, gammaI);
@@ -407,6 +408,7 @@ std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
     Float gammaT = SafeASin(sinGammaT);
 
     // Compute the transmittance _T_ of a single path through the cylinder
+	// TODO: change sigma_a to sigma_c_a
     Spectrum T = Exp(-sigma_a * (2 * cosGammaT / cosThetaT));
     std::array<Spectrum, pMaxFur + 1> ap = Ap(cosThetaO, eta, h, T, cuticle_layers);
 
