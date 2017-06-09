@@ -127,6 +127,8 @@ Spectrum EstimateDirect(const Interaction &it, const Point2f &uScattering,
             const SurfaceInteraction &isect = (const SurfaceInteraction &)it;
             f = isect.bsdf->f(isect.wo, wi, bsdfFlags) *
                 AbsDot(wi, isect.shading.n);
+			//TODO: remove this check once I figure it out.
+			CHECK_GE(f.y(), 0.f);
             scatteringPdf = isect.bsdf->Pdf(isect.wo, wi, bsdfFlags);
             VLOG(2) << "  surf f*dot :" << f << ", scatteringPdf: " << scatteringPdf;
         } else {
@@ -134,6 +136,8 @@ Spectrum EstimateDirect(const Interaction &it, const Point2f &uScattering,
             const MediumInteraction &mi = (const MediumInteraction &)it;
             Float p = mi.phase->p(mi.wo, wi);
             f = Spectrum(p);
+			//TODO: remove this check once I figure it out.
+			CHECK_GE(f.y(), 0.f);
             scatteringPdf = p;
             VLOG(2) << "  medium p: " << p;
         }
@@ -173,13 +177,19 @@ Spectrum EstimateDirect(const Interaction &it, const Point2f &uScattering,
             const SurfaceInteraction &isect = (const SurfaceInteraction &)it;
             f = isect.bsdf->Sample_f(isect.wo, &wi, uScattering, &scatteringPdf,
                                      bsdfFlags, &sampledType);
+			//TODO: remove this check once I figure it out.
+			CHECK_GE(f.y(), 0.f);
             f *= AbsDot(wi, isect.shading.n);
+			//TODO: remove this check once I figure it out.
+			CHECK_GE(f.y(), 0.f);
             sampledSpecular = (sampledType & BSDF_SPECULAR) != 0;
         } else {
             // Sample scattered direction for medium interactions
             const MediumInteraction &mi = (const MediumInteraction &)it;
             Float p = mi.phase->Sample_p(mi.wo, &wi, uScattering);
             f = Spectrum(p);
+			//TODO: remove this check once I figure it out.
+			CHECK_GE(f.y(), 0.f);
             scatteringPdf = p;
         }
         VLOG(2) << "  BSDF / phase sampling f: " << f << ", scatteringPdf: " <<
@@ -211,6 +221,8 @@ Spectrum EstimateDirect(const Interaction &it, const Point2f &uScattering,
             if (!Li.IsBlack()) Ld += f * Li * Tr * weight / scatteringPdf;
         }
     }
+	//TODO: remove this check once I figure it out.
+	CHECK_GE(Ld.y(), 0.f);
     return Ld;
 }
 

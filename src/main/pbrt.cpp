@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
     FLAGS_stderrthreshold = 1; // Warning and above.
 	// Assumes that the precomputed data consists of 2 files in your Release directory
 	// TODO: Replace this absolute path 
-	Material::initialize("C:\\Users\\User\\Documents\\Github\\pbrt-final-project\\Release\\medulla");
+	Material::initialize("C:\\CS348BFinalProject\\medulla");
     Options options;
     std::vector<std::string> filenames;
     // Process command-line arguments

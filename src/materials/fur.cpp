@@ -87,11 +87,13 @@ static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
 	Float cosTheta = cosThetaO * cosGammaO;
 	Float dielectric = FrDielectric(cosTheta, 1.f, eta);
 	Float f = (cuticle_layers * dielectric) / (1 + (cuticle_layers - 1) * dielectric);
+	
 	ap[0] = f;
 
 	// Compute $p=1$ attenuation term
 	ap[1] = Sqr(1 - f) * T;
 	ap[2] = ap[1] * T * f;
+
 
 	// Now do scattered lobes
 	std::array<Spectrum, 2> scatteredAttenuations = attenuation_scattered(cosThetaO, eta, h, T, cuticle_layers, k, T_s);
@@ -100,7 +102,14 @@ static std::array<Spectrum, pMaxFur + 1> Ap(Float cosThetaO, Float eta, Float h,
 
 	// Compute attenuation term accounting for remaining orders of scattering
 	ap[5] = ap[2] * f * T / (Spectrum(1.f) - T * f);
-	return ap;
+	Spectrum denom = (Spectrum(1.f) - T * f);
+	//TODO: remove this once debugging is done.
+	if (ap[5].y() < 0) {
+		printf("ap[5]: %f, ap[2]: %f, f: %f, T: %f, denom: %f.\n", ap[5].y(), ap[2].y(), f, T.y(), denom.y());
+		std::cout << "ap[5] rgb: " << ap[5].ToString() << ", ap[2] rgb: " << ap[2].ToString() << ", T rgb: " 
+			<< T.ToString() << ", denom rgb: " << denom.ToString() << "\n";
+	}
+		return ap;
 }
 
 inline Float Theta(int p, Float thetaI, const Float alphas[]) {
@@ -276,7 +285,6 @@ FurBSDF::FurBSDF(Float h, Float eta, const Spectrum &sigma_a, Spectrum sigma_c_a
 	stdev_azimuthal[0] = beta_n;
 	stdev_azimuthal[1] = sqrt(2) * beta_n;
 	stdev_azimuthal[2] = sqrt(3) * beta_n;
-
     stdev_longitudinal[0] = beta_m;
     stdev_longitudinal[1] = beta_m / 2;
     stdev_longitudinal[2] = 3 * beta_m / 2;
@@ -341,13 +349,19 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 
 	// TODO: stuff below is incorrect
 	Spectrum numerator = -1 * (2 * s_c * sigma_c_a + 2 * s_m * (sigma_m_a + sigma_m_s));
+	if (numerator[0] > 0 || numerator[1] > 0 || numerator[2] > 0) {
+		std::cout << "   numerator values: " << numerator.ToString() << "\n";
+		printf("s_c: %f, s_m: %f, cosGammaT: %f, ", s_c, s_m, cosGammaT);
+		std::cout << "sigma_c_a: " << sigma_c_a.ToString() << "\n";
+	}
 	//printf("s_c: %f, s_m: %f \n", s_c, s_m);
 	Float thetaD = (thetaO - thetaI) / 2;
-	Float denom = cosf(thetaD);
+	Float denom = cosThetaT;
 	Spectrum T;
 	if (denom > 0) {
 		// TODO: why is transmittance so low?
 		T = Exp(numerator / denom);
+		
 	}
 	else {
 		T = Spectrum(0.f);
@@ -357,7 +371,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	Spectrum T_s;
 	Spectrum numerator_s = -1 * ((s_c + 1 + k) * sigma_c_a + k * sigma_m_a);
 	if (denom > 0) {
-		T_s = Exp(numerator / denom);
+		T_s = Exp(numerator_s / denom);
 	}
 	else {
 		T_s = Spectrum(0.f);
@@ -394,7 +408,7 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 
 	// TODO: do we need below?
 	if (AbsCosTheta(wi) > 0) {
-		//fsum /= AbsCosTheta(wi);
+		fsum /= AbsCosTheta(wi);
 	}
 
 	if (std::isnan(fsum.y())) {
@@ -403,6 +417,9 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	CHECK(!std::isinf(fsum.y()));
 	CHECK(!std::isnan(fsum.y()));
 	
+	//TODO: remove this check once I figure it out.
+	if(fsum.y() < 0.f) printf("\nfsum.y = %f, thetaI = %f, thetaO = %f, ap[0]: %f, ap[1]: %f, ap[2]: %f, ap[3]: %f, ap[4]: %f, ap[5]: %f, phi: %f, gammaO: %f, gammaT: %f.", 
+		fsum.y(), thetaI, thetaO, ap[0].y(), ap[1].y(), ap[2].y(), ap[3].y(), ap[4].y(), ap[5].y(), phi, gammaO, gammaT);
     return fsum;
 }
 
@@ -450,8 +467,6 @@ std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
     Float gammaT = SafeASin(sinGammaT);
 
 	// Compute the transmittance _T_ of a single path through the cylinder
-	Spectrum T = Exp(-sigma_a * (2 * cosGammaT / cosThetaT));
-
 	Float s_m;
 	Float term = pow(k, 2) - pow(sinGammaT, 2);
 	if (term < 0) {
@@ -466,12 +481,13 @@ std::array<Float, pMaxFur + 1> FurBSDF::ComputeApPdf(Float cosThetaO) const {
 	// TODO: How to calculate thetaI?
 	Float thetaI = 0.f;
 	Float thetaD = (thetaO - thetaI) / 2;
-	Float denom = cosf(thetaD);
+	Float denom = cosThetaT;
+	Spectrum T = Exp(numerator/denom);
 
 	Spectrum T_s;
 	Spectrum numerator_s = -1 * ((s_c + 1 + k) * sigma_c_a + k * sigma_m_a);
-	if (denom > 0) {
-		T_s = Exp(numerator / denom);
+	if (denom > 0) {	
+		T_s = Exp(numerator_s / denom);
 	} else {
 		T_s = Spectrum(0.f);
 	}

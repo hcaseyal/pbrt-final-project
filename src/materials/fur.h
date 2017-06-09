@@ -93,13 +93,13 @@ class FurBSDF : public BxDF {
 	Float stdev_azimuthal[pMaxFur + 1];
     Float s;
     Float sin2kAlpha[3], cos2kAlpha[3];
-	Float alphas[3];
-	Spectrum sigma_c_a;
-	Float sigma_m_a;
-	Float sigma_m_s;
-	Float k; // medullary index (rel. radius length)
-	Float cuticle_layers;
-	Float g;
+	Float alphas[pMaxFur + 1];
+	const Spectrum sigma_c_a;
+	const Float sigma_m_a;
+	const Float sigma_m_s;
+	const Float k; // medullary index (rel. radius length)
+	const Float cuticle_layers;
+	const Float g;
 };
 
 }  // namespace pbrt
