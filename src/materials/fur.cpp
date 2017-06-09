@@ -12,10 +12,12 @@
 #include "textures/constant.h"
 
 namespace pbrt {
-
+	
 // fur Local Declarations
 inline Float I0(Float x), LogI0(Float x);
 inline Float Theta(int p, Float thetaI, const Float alphas[]);
+inline Float Logistic(Float x, Float s);
+inline Float LogisticCDF(Float x, Float s);
 inline Float TrimmedLogistic(Float x, Float s, Float a, Float b);
 
 // fur Local Functions
@@ -34,12 +36,16 @@ static Float Mp(Float thetaI, Float thetaO, const Float alphas[], int p, Float s
 		mp = scatteredM[num_scattering_inner][num_theta][num_g][num_bin];
 	}
 	else {
+		if (p == 5) {
+			p = 3;
+		}
 		Float dtheta = thetaO - Theta(p, thetaI, alphas);
 		// Remap _dtheta_ to $[-\pi,\pi]$
 		while (dtheta > Pi) dtheta -= 2 * Pi;
 		while (dtheta < -Pi) dtheta += 2 * Pi;
 		mp = TrimmedLogistic(dtheta, stdev, -Pi, Pi);
 	}
+
 	return mp;
 }
 
@@ -147,6 +153,9 @@ inline Float Np(Float phi, int p, Float stdev, Float gammaO, Float gammaT, Float
 		int num_bin_s = indexFromValue(phi - chunk, Pi, Pi / 2, NUM_BINS);
 		np = scattered[num_scattering_inner][num_h][num_g][num_bin_s];
 	} else {
+		if (p == 5) {
+			p = 3;
+		}
 		Float dphi = phi - Phi(p, gammaO, gammaT);
 		// Remap _dphi_ to $[-\pi,\pi]$
 		while (dphi > Pi) dphi -= 2 * Pi;
@@ -420,7 +429,17 @@ Spectrum FurBSDF::f(const Vector3f &wo, const Vector3f &wi) const {
 	//TODO: remove this check once I figure it out.
 	if(fsum.y() < 0.f) printf("\nfsum.y = %f, thetaI = %f, thetaO = %f, ap[0]: %f, ap[1]: %f, ap[2]: %f, ap[3]: %f, ap[4]: %f, ap[5]: %f, phi: %f, gammaO: %f, gammaT: %f.", 
 		fsum.y(), thetaI, thetaO, ap[0].y(), ap[1].y(), ap[2].y(), ap[3].y(), ap[4].y(), ap[5].y(), phi, gammaO, gammaT);
-    return fsum;
+//	if (fsum[0] > 1 || fsum[1] > 1 || fsum[2] > 1) {
+//		std::cout << "fsum.y: " << fsum.y() << " thetaI: " << thetaI << " thetaO: " << thetaO << " phi: " << phi << " gammaO: " << gammaO << " gammaT: " << gammaT
+//			<< "\n lobe 0: mp: " << Mp(thetaI, thetaO, alphas, 0, stdev_longitudinal[0], sigma_m_s, k, g) << " ap[0]: " << ap[0].ToString() << " np: " << Np(phi, 0, stdev_azimuthal[0], gammaO, gammaT, h, k, sigma_m_s, g)
+//			<< "\n lobe 1: mp: " << Mp(thetaI, thetaO, alphas, 1, stdev_longitudinal[1], sigma_m_s, k, g) << " ap[1]: " << ap[1].ToString() << " np: " << Np(phi, 1, stdev_azimuthal[1], gammaO, gammaT, h, k, sigma_m_s, g)
+//			<< "\n lobe 2: mp: " << Mp(thetaI, thetaO, alphas, 2, stdev_longitudinal[2], sigma_m_s, k, g) << " ap[2]: " << ap[2].ToString() << " np: " << Np(phi, 2, stdev_azimuthal[2], gammaO, gammaT, h, k, sigma_m_s, g)
+//			<< "\n lobe 3: mp: " << Mp(thetaI, thetaO, alphas, 3, stdev_longitudinal[3], sigma_m_s, k, g) << " ap[3]: " << ap[3].ToString() << " np: " << Np(phi, 3, stdev_azimuthal[3], gammaO, gammaT, h, k, sigma_m_s, g)
+//			<< "\n lobe 4: mp: " << Mp(thetaI, thetaO, alphas, 4, stdev_longitudinal[4], sigma_m_s, k, g) << " ap[4]: " << ap[4].ToString() << " np: " << Np(phi, 4, stdev_azimuthal[4], gammaO, gammaT, h, k, sigma_m_s, g)
+//			<< "\n lobe 5: mp: " << Mp(thetaI, thetaO, alphas, 5, stdev_longitudinal[5], sigma_m_s, k, g) << " ap[5]: " << ap[5].ToString() << " np: " << 1.f/(2 * Pi)
+//			<< "\n";
+//	}
+	return fsum;
 }
 
 // TODO: we can precompute most of this floating point stuff
