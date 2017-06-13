@@ -1,7 +1,8 @@
-Integrator "volpath" "integer maxdepth" [ 64 ] 
-Sampler "sobol" "integer pixelsamples" [ 4 ]
+Integrator "volpath" "integer maxdepth" [ 1 ] 
+Sampler "sobol" "integer pixelsamples" [ 2 ]
 PixelFilter "triangle" "float xwidth" [ 1.000000 ] "float ywidth" [ 1.000000 ] 
 Film "image" "integer xresolution" [ 1024 ] "integer yresolution" [ 1024 ] "string filename" [ "straightHairs.exr" ] 
+LookAt 0 1 0  0 0.95 1   0 1 0
 Camera "perspective" "float fov" [ 35.000000 ] 
 
 WorldBegin
@@ -9,8 +10,8 @@ WorldBegin
 	     Transform [ -0.999887     0     0.0150413   0 
             0.00390257    0.965755      0.259428    0 
 			0.0145262    -0.259457     0.965645     0 
-			0.146624      -1                 2       1]
-			              #-9.36998    # 28.765
+			0.05      -0.2            2       1]
+			#0.146624    #-9.36998    # 28.765
 		Scale 0.07 0.07 0.07
 		MakeNamedMaterial "hair" "string type" [ "fur" ]
 		"float beta_m" 9.45 "float beta_n" 17.63 "float alpha" 2.64 "rgb sigma_c_a" [0.2 4 6]
@@ -19,9 +20,16 @@ WorldBegin
 		"float g" 0.79
 		
 		NamedMaterial "hair" 
-		Include "models/hair.pbrt" 
-		#LightSource "distant" "point from" [ 0.190330 0.758426 -0.623349 ] "point to" [ 0.000000 0.000000 0.000000 ] "rgb L" [ 19.091171 19.091171 19.091171 ] 
+		Include "models/wolfFineFurs.pbrt"
+		LightSource "distant" "point from" [ 0.190330 0.758426 -0.623349 ] "point to" [ 0.000000 0.000000 0.000000 ] "rgb L" [ 19.091171 19.091171 19.091171 ] 
+		#LightSource "point" "point from" [ 0 3 -5 ] "rgb I" [ 19.091171 19.091171 19.091171 ] 
+		#LightSource "distant" "point from" [ 0 0 -7 ] "rgb L" [ 19.091171 19.091171 19.091171 ] 
+		
 		TransformBegin
+			Transform [ -0.999887     0     0.0150413   0 
+            0.00390257    0.965755      0.259428    0 
+			0.0145262    -0.259457     0.965645     0 
+			0.146624      -1                 2       1]
 			#Transform [ -1 0 8.74228e-008 0 -8.74228e-008 0 -1 0 0 1 0 0 0 0 0 1]
 			#LightSource "infinite" "string mapname" [ "textures/Skydome.pfm" ] 
 		TransformEnd
